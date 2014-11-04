@@ -760,11 +760,7 @@ namespace Aerospike.Client
 		public void Close()
 		{
 			tendValid = false;
-
-			if(!tendThread.Join(10000)) // Give the thread 10 seconds to complete
-            {
-                tendThread.Abort();
-            }
+			tendThread.Interrupt();
 
 			// Must copy array reference for copy on write semantics to work.
 			Node[] nodeArray = nodes;
