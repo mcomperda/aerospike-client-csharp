@@ -73,6 +73,22 @@ namespace Aerospike.Client
 		}
 
 		/// <summary>
+		/// Get double value instance.
+		/// </summary>
+		public static Value Get(double value)
+		{
+			return new DoubleValue(value);
+		}
+
+		/// <summary>
+		/// Get float value instance.
+		/// </summary>
+		public static Value Get(float value)
+		{
+			return new FloatValue(value);
+		}
+
+		/// <summary>
 		/// Get long value instance.
 		/// </summary>
 		public static Value Get(long value)
@@ -248,6 +264,12 @@ namespace Aerospike.Client
                 case TypeCode.String:
 					return new StringValue((string)value);
 
+				case TypeCode.Double:
+					return new DoubleValue((double)value);
+
+				case TypeCode.Single:
+					return new FloatValue((float)value);
+
 				case TypeCode.Int64:
 					return new LongValue((long)value);
 
@@ -277,8 +299,6 @@ namespace Aerospike.Client
 
                 case TypeCode.Char:
                 case TypeCode.DateTime:
-                case TypeCode.Double:
-                case TypeCode.Single:
                 default:
 					return new BlobValue(value);
             }
@@ -299,6 +319,14 @@ namespace Aerospike.Client
 		/// </summary>
 		public abstract void Pack(Packer packer);
 
+		/// <summary>
+		/// Validate if value type can be used as a key.
+		/// </summary>
+		/// <exception cref="AerospikeException">if type can't be used as a key.</exception>
+		public virtual void ValidateKeyType()
+		{
+		}
+	
 		/// <summary>
 		/// Get wire protocol value type.
 		/// </summary>
@@ -361,6 +389,11 @@ namespace Aerospike.Client
 				packer.PackNil();
 			}
 
+			public override void ValidateKeyType()
+			{
+				throw new AerospikeException(ResultCode.PARAMETER_ERROR, "Invalid key type: null");
+			}
+			
 			public override int Type
 			{
 				get
@@ -557,6 +590,146 @@ namespace Aerospike.Client
 				{
 					return length;
 				}
+			}
+		}
+
+		/// <summary>
+		/// Double value.
+		/// </summary>
+		public sealed class DoubleValue : Value
+		{
+			private readonly double value;
+
+			public DoubleValue(double value)
+			{
+				this.value = value;
+			}
+
+			public override int EstimateSize()
+			{
+				return 8;
+			}
+
+			public override int Write(byte[] buffer, int offset)
+			{
+				return ByteUtil.DoubleToBytes(value, buffer, offset);
+			}
+
+			public override void Pack(Packer packer)
+			{
+				packer.PackDouble(value);
+			}
+
+			public override int Type
+			{
+				get
+				{
+					// The server does not natively handle doubles, so store as long (8 byte integer).
+					return ParticleType.INTEGER;
+				}
+			}
+
+			public override object Object
+			{
+				get
+				{
+					return value;
+				}
+			}
+
+			public override string ToString()
+			{
+				return Convert.ToString(value);
+			}
+
+			public override int ToInteger()
+			{
+				return (int)value;
+			}
+
+			public override uint ToUnsignedInteger()
+			{
+				return (uint)value;
+			}
+
+			public override long ToLong()
+			{
+				return (long)value;
+			}
+
+			public override ulong ToUnsignedLong()
+			{
+				return (ulong)value;
+			}
+		}
+
+		/// <summary>
+		/// Float value.
+		/// </summary>
+		public sealed class FloatValue : Value
+		{
+			private readonly float value;
+
+			public FloatValue(float value)
+			{
+				this.value = value;
+			}
+
+			public override int EstimateSize()
+			{
+				return 8;
+			}
+
+			public override int Write(byte[] buffer, int offset)
+			{
+				return ByteUtil.DoubleToBytes(value, buffer, offset);
+			}
+
+			public override void Pack(Packer packer)
+			{
+				packer.PackFloat(value);
+			}
+
+			public override int Type
+			{
+				get
+				{
+					// The server does not natively handle doubles, so store as long (8 byte integer).
+					return ParticleType.INTEGER;
+				}
+			}
+
+			public override object Object
+			{
+				get
+				{
+					return value;
+				}
+			}
+
+			public override string ToString()
+			{
+				return Convert.ToString(value);
+			}
+
+			public override int ToInteger()
+			{
+				return (int)value;
+			}
+
+			public override uint ToUnsignedInteger()
+			{
+				return (uint)value;
+			}
+
+			public override long ToLong()
+			{
+				return (long)value;
+			}
+
+			public override ulong ToUnsignedLong()
+			{
+				return (ulong)value;
 			}
 		}
 
@@ -1220,6 +1393,11 @@ namespace Aerospike.Client
 				packer.PackBlob(obj);
 			}
 
+			public override void ValidateKeyType()
+			{
+				throw new AerospikeException(ResultCode.PARAMETER_ERROR, "Invalid key type: csblob");
+			}
+
 			public override int Type
 			{
 				get
@@ -1271,6 +1449,11 @@ namespace Aerospike.Client
 			public override void Pack(Packer packer)
 			{
 				packer.PackValueArray(array);
+			}
+
+			public override void ValidateKeyType()
+			{
+				throw new AerospikeException(ResultCode.PARAMETER_ERROR, "Invalid key type: value[]");
 			}
 
 			public override int Type
@@ -1326,6 +1509,11 @@ namespace Aerospike.Client
 				packer.PackList(list);
 			}
 
+			public override void ValidateKeyType()
+			{
+				throw new AerospikeException(ResultCode.PARAMETER_ERROR, "Invalid key type: list");
+			}
+
 			public override int Type
 			{
 				get
@@ -1377,6 +1565,11 @@ namespace Aerospike.Client
 			public override void Pack(Packer packer)
 			{
 				packer.PackMap(map);
+			}
+
+			public override void ValidateKeyType()
+			{
+				throw new AerospikeException(ResultCode.PARAMETER_ERROR, "Invalid key type: map");
 			}
 
 			public override int Type

@@ -14,30 +14,21 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-using System;
-using System.Collections.Generic;
-
 namespace Aerospike.Client
 {
-	public sealed class ExecuteCommand : ReadCommand
+	/// <summary>
+	/// Desired consistency guarantee when committing a transaction on the server.
+	/// </summary>
+	public enum CommitLevel
 	{
-		private readonly WritePolicy writePolicy;
-		private readonly string packageName;
-		private readonly string functionName;
-		private readonly Value[] args;
+		/// <summary>
+		/// Server should wait until successfully committing master and all replicas.
+		/// </summary>
+		COMMIT_ALL,
 
-		public ExecuteCommand(Cluster cluster, WritePolicy writePolicy, Key key, string packageName, string functionName, Value[] args)
-			: base(cluster, writePolicy, key, null)
-		{
-			this.writePolicy = writePolicy;
-			this.packageName = packageName;
-			this.functionName = functionName;
-			this.args = args;
-		}
-
-		protected internal override void WriteBuffer()
-		{
-			SetUdf(writePolicy, key, packageName, functionName, args);
-		}
+		/// <summary>
+		/// Server should wait until successfully committing master only.
+		/// </summary>
+		COMMIT_MASTER
 	}
 }

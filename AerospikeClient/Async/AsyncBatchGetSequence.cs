@@ -23,7 +23,6 @@ namespace Aerospike.Client
 		private readonly BatchNode.BatchNamespace batchNamespace;
 		private readonly Policy policy;
 		private readonly Key[] keys;
-		private readonly HashSet<string> binNames;
 		private readonly RecordSequenceListener listener;
 		private readonly int readAttr;
 
@@ -38,12 +37,11 @@ namespace Aerospike.Client
 			HashSet<string> binNames,
 			RecordSequenceListener listener,
 			int readAttr
-		) : base(parent, cluster, node, false)
+		) : base(parent, cluster, node, false, binNames)
 		{
 			this.batchNamespace = batchNamespace;
 			this.policy = policy;
 			this.keys = keys;
-			this.binNames = binNames;
 			this.listener = listener;
 			this.readAttr = readAttr;
 		}
@@ -55,14 +53,14 @@ namespace Aerospike.Client
 
 		protected internal override void WriteBuffer()
 		{
-			SetBatchGet(keys, batchNamespace, binNames, readAttr);
+			SetBatchGet(policy, keys, batchNamespace, binNames, readAttr);
 		}
 
 		protected internal override void ParseRow(Key key)
 		{
 			if (resultCode == 0)
 			{
-				Record record = ParseRecord();
+				Record record = ParseRecordBatch();
 				listener.OnRecord(key, record);
 			}
 			else

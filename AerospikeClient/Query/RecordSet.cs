@@ -25,7 +25,7 @@ namespace Aerospike.Client
 	/// Multiple threads will retrieve records from the server nodes and put these records on the queue.
 	/// The single user thread consumes these records from the queue.
 	/// </summary>
-	public sealed class RecordSet
+	public sealed class RecordSet : IDisposable
 	{
 		public static readonly KeyRecord END = new KeyRecord(null, null);
 
@@ -78,12 +78,19 @@ namespace Aerospike.Client
 				executor.CheckForException();
 				return false;
 			}
-
 			return true;
 		}
 
 		/// <summary>
-		/// Cancel query.
+		/// Close query.
+		/// </summary>
+		public void Dispose()
+		{
+			Close();
+		}
+
+		/// <summary>
+		/// Close query.
 		/// </summary>
 		public void Close()
 		{
@@ -171,7 +178,7 @@ namespace Aerospike.Client
 		/// <summary>
 		/// Abort retrieval with end token.
 		/// </summary>
-		private void Abort()
+		internal void Abort()
 		{
 			valid = false;
 
@@ -184,6 +191,10 @@ namespace Aerospike.Client
 				if (!queue.TryTake(out tmp))
 				{
 					// Can't add or take.  Nothing can be done here.
+					if (Log.DebugEnabled())
+					{
+						Log.Debug("RecordSet " + executor.statement.taskId + " both add and take failed on abort");
+					}
 					break;
 				}
 			}

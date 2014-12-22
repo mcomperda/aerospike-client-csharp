@@ -14,30 +14,22 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-using System;
-using System.Collections.Generic;
-
 namespace Aerospike.Client
 {
-	public sealed class ExecuteCommand : ReadCommand
+	/// <summary>
+	/// How replicas should be consulted in a read operation to provide the desired
+	/// consistency guarantee.
+	/// </summary>
+	public enum ConsistencyLevel
 	{
-		private readonly WritePolicy writePolicy;
-		private readonly string packageName;
-		private readonly string functionName;
-		private readonly Value[] args;
+		/// <summary>
+		/// Involve a single replica in the operation.
+		/// </summary>
+		CONSISTENCY_ONE,
 
-		public ExecuteCommand(Cluster cluster, WritePolicy writePolicy, Key key, string packageName, string functionName, Value[] args)
-			: base(cluster, writePolicy, key, null)
-		{
-			this.writePolicy = writePolicy;
-			this.packageName = packageName;
-			this.functionName = functionName;
-			this.args = args;
-		}
-
-		protected internal override void WriteBuffer()
-		{
-			SetUdf(writePolicy, key, packageName, functionName, args);
-		}
+		/// <summary>
+		/// Involve all replicas in the operation.
+		/// </summary>
+		CONSISTENCY_ALL
 	}
 }

@@ -34,7 +34,6 @@ namespace Aerospike.Client
 		public QueryExecutor(Cluster cluster, QueryPolicy policy, Statement statement)
 		{
 			this.policy = policy;
-			this.policy.maxRetries = 0; // Retry policy must be one-shot for queries.
 			this.statement = statement;
 			this.cancel = new CancellationTokenSource();
 
@@ -102,14 +101,9 @@ namespace Aerospike.Client
 
 				foreach (QueryThread thread in threads)
 				{
-					try
-					{
-						thread.Stop();
-					}
-					catch (Exception)
-					{
-					}
+					thread.Stop();
 				}
+				cancel.Cancel();
 				SendCancel();
 			}
 		}
@@ -156,7 +150,6 @@ namespace Aerospike.Client
 			public void Stop()
 			{
 				command.Stop();
-				parent.cancel.Cancel();
 			}
 		}
 

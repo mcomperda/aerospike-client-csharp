@@ -29,6 +29,13 @@ namespace Aerospike.Client
 		public Priority priority = Priority.DEFAULT;
 
 		/// <summary>
+		/// How replicas should be consulted in a read operation to provide the desired
+		/// consistency guarantee. Default to allowing one replica to be used in the
+		/// read operation.
+		/// </summary>
+		public ConsistencyLevel consistencyLevel = ConsistencyLevel.CONSISTENCY_ONE;
+
+		/// <summary>
 		/// Transaction timeout in milliseconds.
 		/// This timeout is used to set the socket timeout and is also sent to the 
 		/// server along with the transaction in the wire protocol.
@@ -40,9 +47,9 @@ namespace Aerospike.Client
 		/// Maximum number of retries before aborting the current transaction.
 		/// A retry is attempted when there is a network error other than timeout.  
 		/// If maxRetries is exceeded, the abort will occur even if the timeout 
-		/// has not yet been exceeded. The default number of retries is 2.
+		/// has not yet been exceeded. The default number of retries is 1.
 		/// </summary>
-		public int maxRetries = 2;
+		public int maxRetries = 1;
 
 		/// <summary>
 		/// Milliseconds to sleep between retries if a transaction fails and the 
@@ -68,6 +75,7 @@ namespace Aerospike.Client
 		public Policy(Policy other)
 		{
 			this.priority = other.priority;
+			this.consistencyLevel = other.consistencyLevel;
 			this.timeout = other.timeout;
 			this.maxRetries = other.maxRetries;
 			this.sleepBetweenRetries = other.sleepBetweenRetries;

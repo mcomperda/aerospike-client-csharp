@@ -16,106 +16,146 @@
  */
 using System;
 using System.Threading;
+
+#if (IIS)
 using System.Web;
+#endif
 
 namespace Aerospike.Client
 {
-    public sealed class ThreadLocalData
-    {
+	public sealed class ThreadLocalData
+	{
+		private const int THREAD_LOCAL_CUTOFF = 1024 * 128; // 128 KB
 
-        private static bool IsWebContext
-        {
-            get
-            {
-                try
-                {
-                    return HttpContext.Current != null && HttpContext.Current.Items != null;
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-        }
+		[ThreadStatic]
+		private static byte[] BufferThreadLocal;
 
-        //private static final int MAX_BUFFER_SIZE = 1024 * 1024;  // 1 MB
-        private const int THREAD_LOCAL_CUTOFF = 1024 * 128; // 128 KB
+		#if (! IIS)
+		//--------------------------------------------------------------------------------
+		// Regular client applications always use thread static to store reusable buffers.
+		//--------------------------------------------------------------------------------
 
+		public static byte[] GetBuffer()
+		{
+			if (BufferThreadLocal == null)
+			{
+				BufferThreadLocal = new byte[8192];
+			}
+			return BufferThreadLocal;
+		}
 
-        [ThreadStatic]
-        private static byte[] _threadStaticBuffer;
+		public static byte[] ResizeBuffer(int size)
+		{
+			// Do not store extremely large buffers in thread local storage.
+			if (size > THREAD_LOCAL_CUTOFF)
+			{
+				if (Log.DebugEnabled())
+				{
+					Log.Debug("Thread " + Thread.CurrentThread.ManagedThreadId + " allocate buffer on heap " + size);
+				}
+				return new byte[size];
+			}
 
-        private static byte[] BufferThreadLocal
-        {
-            get
-            {
-                if (IsWebContext)
-                {
-                    var val = HttpContext.Current.Items["AeroSpike.Client.ThreadLocalData"];
-                    return val != null ? (byte[])val : null;
+			if (Log.DebugEnabled())
+			{
+				Log.Debug("Thread " + Thread.CurrentThread.ManagedThreadId + " resize buffer to " + size);
+			}
+			BufferThreadLocal = new byte[size];
+			return BufferThreadLocal;
+		}
 
-                }
-                else
-                {
-                    return _threadStaticBuffer;
-                }
-            }
-            set
-            {
-                if (IsWebContext)
-                {
-                    HttpContext.Current.Items["AeroSpike.Client.ThreadLocalData"] = value;
-                }
-                else
-                {
-                    _threadStaticBuffer = value;
-                }
-            }
-        }
+		#else
+		//----------------------------------------------------------------------
+		// IIS web server applications use HttpContext to store reusable buffers
+		// when a http context is defined in the current thread.
+		//----------------------------------------------------------------------
+		
+		private static bool IsWebContext
+		{
+			get
+			{
+				try
+				{
+					return HttpContext.Current != null && HttpContext.Current.Items != null;
+				}
+				catch
+				{
+					return false;
+				}
+			}
+		}
 
-        private static bool BufferExists
-        {
-            get
-            {
-                if (IsWebContext)
-                {
-                    return HttpContext.Current.Items["AeroSpike.Client.ThreadLocalData"] != null;
-                }
-                else
-                {
-                    return _threadStaticBuffer != null;
-                }
-            }
-        }
+		private static byte[] Buffer
+		{
+			get
+			{
+				if (IsWebContext)
+				{
+					var val = HttpContext.Current.Items["AeroSpike.Client.ThreadLocalData"];
+					return val != null ? (byte[])val : null;
 
-        public static byte[] GetBuffer()
-        {
-            if (!BufferExists)
-            {
-                BufferThreadLocal = new byte[8192];
-            }
+				}
+				else
+				{
+					return BufferThreadLocal;
+				}
+			}
+			set
+			{
+				if (IsWebContext)
+				{
+					HttpContext.Current.Items["AeroSpike.Client.ThreadLocalData"] = value;
+				}
+				else
+				{
+					BufferThreadLocal = value;
+				}
+			}
+		}
 
-            return BufferThreadLocal;
-        }
+		private static bool BufferExists
+		{
+			get
+			{
+				if (IsWebContext)
+				{
+					return HttpContext.Current.Items["AeroSpike.Client.ThreadLocalData"] != null;
+				}
+				else
+				{
+					return BufferThreadLocal != null;
+				}
+			}
+		}
 
-        public static byte[] ResizeBuffer(int size)
-        {
-            // Do not store extremely large buffers in thread local storage.
-            if (size > THREAD_LOCAL_CUTOFF)
-            {
-                if (Log.DebugEnabled())
-                {
-                    Log.Debug("Thread " + Thread.CurrentThread.ManagedThreadId + " allocate buffer on heap " + size);
-                }
-                return new byte[size];
-            }
+		public static byte[] GetBuffer()
+		{
+			if (!BufferExists)
+			{
+				Buffer = new byte[8192];
+			}
+			return Buffer;
+		}
 
-            if (Log.DebugEnabled())
-            {
-                Log.Debug("Thread " + Thread.CurrentThread.ManagedThreadId + " resize buffer to " + size);
-            }
-            BufferThreadLocal = new byte[size];
-            return BufferThreadLocal;
-        }
-    }
+		public static byte[] ResizeBuffer(int size)
+		{
+			// Do not store extremely large buffers in thread local storage.
+			if (size > THREAD_LOCAL_CUTOFF)
+			{
+				if (Log.DebugEnabled())
+				{
+					Log.Debug("Thread " + Thread.CurrentThread.ManagedThreadId + " allocate buffer on heap " + size);
+				}
+				return new byte[size];
+			}
+
+			if (Log.DebugEnabled())
+			{
+				Log.Debug("Thread " + Thread.CurrentThread.ManagedThreadId + " resize buffer to " + size);
+			}
+			Buffer = new byte[size];
+			return Buffer;
+		}
+		#endif
+	}
 }
