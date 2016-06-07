@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -22,13 +22,17 @@ namespace Aerospike.Client
 	{
 		private readonly Policy policy;
 		private readonly RecordListener listener;
+		private readonly Key key;
+		private readonly Partition partition;
 		private Record record;
 
 		public AsyncReadHeader(AsyncCluster cluster, Policy policy, RecordListener listener, Key key) 
-			: base(cluster, key)
+			: base(cluster)
 		{
 			this.policy = policy;
 			this.listener = listener;
+			this.key = key;
+			this.partition = new Partition(key);
 		}
 
 		protected internal override Policy GetPolicy()
@@ -41,14 +45,19 @@ namespace Aerospike.Client
 			SetReadHeader(policy, key);
 		}
 
+		protected internal override AsyncNode GetNode()
+		{
+			return (AsyncNode)cluster.GetReadNode(partition, policy.replica);
+		}
+
 		protected internal override void ParseResult()
 		{
-			int resultCode = dataBuffer[5];
+			int resultCode = dataBuffer[dataOffset + 5];
 
 			if (resultCode == 0)
 			{
-				int generation = ByteUtil.BytesToInt(dataBuffer, 6);
-				int expiration = ByteUtil.BytesToInt(dataBuffer, 10);
+				int generation = ByteUtil.BytesToInt(dataBuffer, dataOffset + 6);
+				int expiration = ByteUtil.BytesToInt(dataBuffer, dataOffset + 10);
 
 				record = new Record(null, generation, expiration);
 			}

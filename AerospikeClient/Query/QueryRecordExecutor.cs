@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -24,7 +24,8 @@ namespace Aerospike.Client
 			: base(cluster, policy, statement)
 		{
 			this.recordSet = new RecordSet(this, policy.recordQueueSize, cancel.Token);
-			statement.Prepare();
+			statement.Prepare(true);
+			InitializeThreads();
 		}
 
 		public void Execute()
@@ -32,7 +33,7 @@ namespace Aerospike.Client
 			StartThreads();
 		}
 
-		protected internal override QueryCommand CreateCommand(Node node)
+		protected internal override MultiCommand CreateCommand(Node node)
 		{
 			return new QueryRecordCommand(node, policy, statement, recordSet);
 		}

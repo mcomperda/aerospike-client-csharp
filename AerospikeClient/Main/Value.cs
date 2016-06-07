@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -27,6 +27,19 @@ namespace Aerospike.Client
 	/// </summary>
 	public abstract class Value
 	{
+		/// <summary>
+		/// Should the client use the new double floating point particle type supported by Aerospike
+		/// server versions >= 3.6.0.  It's important that all server nodes and XDR be upgraded before
+		/// enabling this feature.
+		/// <para>
+		/// If false, the old method using an long particle type is used instead.
+		/// </para>
+		/// <para>
+		/// The current default is false.  Eventually, this default will be changed to true in a future client version.
+		/// </para>
+		/// </summary>
+		public static bool UseDoubleType = false;
+	
 		/// <summary>
 		/// Get string or null value instance.
 		/// </summary>
@@ -161,6 +174,38 @@ namespace Aerospike.Client
 		}
 
 		/// <summary>
+		/// Get list or null value instance.
+		/// Support by Aerospike 3 servers only.
+		/// </summary>
+		public static Value Get(IList value)
+		{
+			if (value == null)
+			{
+				return new NullValue();
+			}
+			else
+			{
+				return new ListValue(value);
+			}
+		}
+
+		/// <summary>
+		/// Get map or null value instance.
+		/// Support by Aerospike 3 servers only.
+		/// </summary>
+		public static Value Get(IDictionary value)
+		{
+			if (value == null)
+			{
+				return new NullValue();
+			}
+			else
+			{
+				return new MapValue(value);
+			}
+		}
+
+		/// <summary>
 		/// Get value array instance.
 		/// </summary>
 		public static Value Get(Value[] value)
@@ -191,10 +236,9 @@ namespace Aerospike.Client
 		}
 
 		/// <summary>
-		/// Get list or null value instance.
-		/// Support by Aerospike 3 servers only.
+		/// Get GeoJSON or null value instance.
 		/// </summary>
-		public static Value GetAsList(IList value)
+		public static Value GetAsGeoJSON(string value)
 		{
 			if (value == null)
 			{
@@ -202,23 +246,7 @@ namespace Aerospike.Client
 			}
 			else
 			{
-				return new ListValue(value);
-			}
-		}
-
-		/// <summary>
-		/// Get map or null value instance.
-		/// Support by Aerospike 3 servers only.
-		/// </summary>
-		public static Value GetAsMap(IDictionary value)
-		{
-			if (value == null)
-			{
-				return new NullValue();
-			}
-			else
-			{
-				return new MapValue(value);
+				return new GeoJSONValue(value);
 			}
 		}
 		
@@ -264,11 +292,15 @@ namespace Aerospike.Client
                 case TypeCode.String:
 					return new StringValue((string)value);
 
+				/* Store double/float values as a C# serialized blob when an object argument is used
+				 * instead of the direct double argument (Value.Get(double value)).
+				 * Therefore, disable this code block.
 				case TypeCode.Double:
 					return new DoubleValue((double)value);
 
 				case TypeCode.Single:
 					return new FloatValue((float)value);
+				*/
 
 				case TypeCode.Int64:
 					return new LongValue((long)value);
@@ -297,11 +329,93 @@ namespace Aerospike.Client
                 case TypeCode.SByte:
 					return new SignedByteValue((sbyte)value);
 
-                case TypeCode.Char:
+				case TypeCode.Char:
                 case TypeCode.DateTime:
                 default:
 					return new BlobValue(value);
             }
+		}
+
+		/// <summary>
+		/// Get value from Record object. Useful when copying records from one cluster to another.
+		/// Since map/list are converted, this method should only be called when using
+		/// Aerospike 3 servers.
+		/// </summary>
+		public static Value GetFromRecordObject(object value)
+		{
+			if (value == null)
+			{
+				return new NullValue();
+			}
+
+			if (value is byte[])
+			{
+				return new BytesValue((byte[])value);
+			}
+
+			if (value is Value)
+			{
+				return (Value)value;
+			}
+
+			if (value is IList)
+			{
+				return new ListValue((IList)value);
+			}
+
+			if (value is IDictionary)
+			{
+				return new MapValue((IDictionary)value);
+			}
+
+			TypeCode code = System.Type.GetTypeCode(value.GetType());
+
+			switch (code)
+			{
+				case TypeCode.Empty:
+					return new NullValue();
+
+				case TypeCode.String:
+					return new StringValue((string)value);
+
+				case TypeCode.Double:
+					return new DoubleValue((double)value);
+
+				case TypeCode.Single:
+					return new FloatValue((float)value);
+
+				case TypeCode.Int64:
+					return new LongValue((long)value);
+
+				case TypeCode.Int32:
+					return new IntegerValue((int)value);
+
+				case TypeCode.Int16:
+					return new ShortValue((short)value);
+
+				case TypeCode.UInt64:
+					return new UnsignedLongValue((ulong)value);
+
+				case TypeCode.UInt32:
+					return new UnsignedIntegerValue((uint)value);
+
+				case TypeCode.UInt16:
+					return new UnsignedShortValue((ushort)value);
+
+				case TypeCode.Boolean:
+					return new BooleanValue((bool)value);
+
+				case TypeCode.Byte:
+					return new ByteValue((byte)value);
+
+				case TypeCode.SByte:
+					return new SignedByteValue((sbyte)value);
+
+				case TypeCode.Char:
+				case TypeCode.DateTime:
+				default:
+					return new BlobValue(value);
+			}
 		}
 
 		/// <summary>
@@ -414,6 +528,20 @@ namespace Aerospike.Client
 			{
 				return null;
 			}
+
+			public override bool Equals(object other)
+			{
+				if (other == null)
+				{
+					return true;
+				}
+				return this.GetType().Equals(other.GetType());
+			}
+
+			public override int GetHashCode()
+			{
+				return 0;
+			}
 		}
 
 		/// <summary>
@@ -462,6 +590,18 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return value;
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null && 
+					this.GetType().Equals(other.GetType()) && 
+					this.value.Equals(((StringValue)other).value));
+			}
+
+			public override int GetHashCode()
+			{
+				return value.GetHashCode();
 			}
 		}
 
@@ -512,6 +652,23 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return ByteUtil.BytesToHexString(bytes);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					Util.ByteArrayEquals(this.bytes, ((BytesValue)other).bytes));
+			}
+
+			public override int GetHashCode()
+			{
+				int result = 1;
+				foreach (byte b in bytes)
+				{
+					result = 31 * result + b;
+				}
+				return result;
 			}
 		}
 
@@ -566,6 +723,44 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return ByteUtil.BytesToHexString(bytes, offset, length);
+			}
+
+			public override bool Equals(object obj)
+			{
+				if (obj == null)
+				{
+					return false;
+				}
+
+				if (!this.GetType().Equals(obj.GetType()))
+				{
+					return false;
+				}
+				ByteSegmentValue other = (ByteSegmentValue)obj;
+
+				if (this.length != other.length)
+				{
+					return false;
+				}
+
+				for (int i = 0; i < length; i++)
+				{
+					if (this.bytes[this.offset + i] != other.bytes[other.offset + i])
+					{
+						return false;
+					}
+				}
+				return true;
+			}
+
+			public override int GetHashCode()
+			{
+				int result = 1;
+				for (int i = 0; i < length; i++)
+				{
+					result = 31 * result + bytes[offset + i];
+				}
+				return result;
 			}
 
 			public byte[] Bytes
@@ -624,8 +819,7 @@ namespace Aerospike.Client
 			{
 				get
 				{
-					// The server does not natively handle doubles, so store as long (8 byte integer).
-					return ParticleType.INTEGER;
+					return UseDoubleType ? ParticleType.DOUBLE : ParticleType.INTEGER;
 				}
 			}
 
@@ -640,6 +834,19 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Convert.ToString(value);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) && 
+					this.value == ((DoubleValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				ulong bits = (ulong)BitConverter.DoubleToInt64Bits(value);
+				return (int)(bits ^ (bits >> 32));
 			}
 
 			public override int ToInteger()
@@ -694,8 +901,7 @@ namespace Aerospike.Client
 			{
 				get
 				{
-					// The server does not natively handle doubles, so store as long (8 byte integer).
-					return ParticleType.INTEGER;
+					return UseDoubleType ? ParticleType.DOUBLE : ParticleType.INTEGER;
 				}
 			}
 
@@ -710,6 +916,19 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Convert.ToString(value);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((FloatValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				ulong bits = (ulong)BitConverter.DoubleToInt64Bits(value);
+				return (int)(bits ^ (bits >> 32));
 			}
 
 			public override int ToInteger()
@@ -781,6 +1000,18 @@ namespace Aerospike.Client
 				return Convert.ToString(value);
 			}
 
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((LongValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)((ulong)value ^ ((ulong)value >> 32));
+			}
+
 			public override int ToInteger()
 			{
 				return (int)value;
@@ -848,6 +1079,18 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Convert.ToString(value);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((UnsignedLongValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)(value ^ (value >> 32));
 			}
 
 			public override int ToInteger()
@@ -918,7 +1161,19 @@ namespace Aerospike.Client
 			{
 				return Convert.ToString(value);
 			}
-		
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((IntegerValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return value;
+			}
+
 			public override int ToInteger()
 			{
 				return value;
@@ -986,6 +1241,18 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Convert.ToString(value);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((UnsignedIntegerValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)value;
 			}
 
 			public override int ToInteger()
@@ -1057,6 +1324,18 @@ namespace Aerospike.Client
 				return Convert.ToString(value);
 			}
 
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((ShortValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)value;
+			}
+
 			public override int ToInteger()
 			{
 				return value;
@@ -1124,6 +1403,18 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Convert.ToString(value);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((UnsignedShortValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)value;
 			}
 
 			public override int ToInteger()
@@ -1196,6 +1487,18 @@ namespace Aerospike.Client
 				return Convert.ToString(value);
 			}
 
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((BooleanValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return value ? 1231 : 1237;
+			}
+
 			public override int ToInteger()
 			{
 				return value? 1 : 0;
@@ -1266,6 +1569,18 @@ namespace Aerospike.Client
 				return Convert.ToString(value);
 			}
 
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((ByteValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)value;
+			}
+
 			public override int ToInteger()
 			{
 				return value;
@@ -1334,6 +1649,18 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Convert.ToString(value);
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value == ((SignedByteValue)other).value);
+			}
+
+			public override int GetHashCode()
+			{
+				return (int)value;
 			}
 
 			public override int ToInteger()
@@ -1418,6 +1745,87 @@ namespace Aerospike.Client
 			{
 				return ByteUtil.BytesToHexString(bytes);
 			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.obj.Equals(((BlobValue)other).obj));
+			}
+
+			public override int GetHashCode()
+			{
+				return obj.GetHashCode();
+			}
+		}
+
+		/// <summary>
+		/// GeoJSON value.
+		/// </summary>
+		public sealed class GeoJSONValue : Value
+		{
+			private readonly string value;
+
+			public GeoJSONValue(string value)
+			{
+				this.value = value;
+			}
+
+			public override int EstimateSize()
+			{
+				// flags + ncells + jsonstr
+				return 1 + 2 + ByteUtil.EstimateSizeUtf8(value);
+			}
+
+			public override int Write(byte[] buffer, int offset)
+			{
+				buffer[offset] = 0; // flags
+				ByteUtil.ShortToBytes(0, buffer, offset + 1); // ncells
+				return 1 + 2 + ByteUtil.StringToUtf8(value, buffer, offset + 3); // jsonstr
+			}
+
+			public override void Pack(Packer packer)
+			{
+				packer.PackGeoJSON(value);
+			}
+
+			public override void ValidateKeyType()
+			{
+				throw new AerospikeException(ResultCode.PARAMETER_ERROR, "Invalid key type: GeoJSON");
+			}
+
+			public override int Type
+			{
+				get
+				{
+					return ParticleType.GEOJSON;
+				}
+			}
+
+			public override object Object
+			{
+				get
+				{
+					return value;
+				}
+			}
+
+			public override string ToString()
+			{
+				return value;
+			}
+
+			public override bool Equals(object other)
+			{
+				return (other != null &&
+					this.GetType().Equals(other.GetType()) &&
+					this.value.Equals(((GeoJSONValue)other).value));
+			}
+
+			public override int GetHashCode()
+			{
+				return value.GetHashCode();
+			}
 		}
 
 		/// <summary>
@@ -1475,6 +1883,56 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return Util.ArrayToString(array);
+			}
+
+			public override bool Equals(object obj)
+			{
+				if (obj == null)
+				{
+					return false;
+				}
+
+				if (!this.GetType().Equals(obj.GetType()))
+				{
+					return false;
+				}
+				ValueArray other = (ValueArray)obj;
+
+				if (this.array.Length != other.array.Length)
+				{
+					return false;
+				}
+
+				for (int i = 0; i < this.array.Length; i++)
+				{
+					Value v1 = this.array[i];
+					Value v2 = other.array[i];
+
+					if (v1 == null)
+					{
+						if (v2 == null)
+						{
+							continue;
+						}
+						return false;
+					}
+
+					if (!v1.Equals(v2))
+					{
+						return false;
+					}
+				}
+				return true;
+			}
+
+			public override int GetHashCode()
+			{
+				int result = 1;
+				foreach (Value value in array)
+				{
+					result = 31 * result + (value == null ? 0 : value.GetHashCode());
+				}
+				return result;
 			}
 		}
 
@@ -1534,6 +1992,56 @@ namespace Aerospike.Client
 			{
 				return list.ToString();
 			}
+
+			public override bool Equals(object obj)
+			{
+				if (obj == null)
+				{
+					return false;
+				}
+
+				if (!this.GetType().Equals(obj.GetType()))
+				{
+					return false;
+				}
+				ListValue other = (ListValue)obj;
+
+				if (this.list.Count != other.list.Count)
+				{
+					return false;
+				}
+
+				for (int i = 0; i < this.list.Count; i++)
+				{
+					object v1 = this.list[i];
+					object v2 = other.list[i];
+
+					if (v1 == null)
+					{
+						if (v2 == null)
+						{
+							continue;
+						}
+						return false;
+					}
+
+					if (!v1.Equals(v2))
+					{
+						return false;
+					}
+				}
+				return true;
+			}
+
+			public override int GetHashCode()
+			{
+				int result = 1;
+				foreach (object value in list)
+				{
+					result = 31 * result + (value == null ? 0 : value.GetHashCode());
+				}
+				return result;
+			}
 		}
 
 		/// <summary>
@@ -1591,6 +2099,64 @@ namespace Aerospike.Client
 			public override string ToString()
 			{
 				return map.ToString();
+			}
+
+			public override bool Equals(object obj)
+			{
+				if (obj == null)
+				{
+					return false;
+				}
+
+				if (!this.GetType().Equals(obj.GetType()))
+				{
+					return false;
+				}
+				MapValue other = (MapValue)obj;
+
+				if (this.map.Count != other.map.Count)
+				{
+					return false;
+				}
+
+				try
+				{
+					foreach (DictionaryEntry entry in this.map)
+					{
+						object v1 = entry.Value;
+						object v2 = other.map[entry.Key];
+
+						if (v1 == null)
+						{
+							if (v2 == null)
+							{
+								continue;
+							}
+							return false;
+						}
+
+						if (!v1.Equals(v2))
+						{
+							return false;
+						}
+					}
+					return true;
+				}
+				catch (Exception)
+				{
+					return false;
+				}
+			}
+
+			public override int GetHashCode()
+			{
+				int result = 1;
+				foreach (DictionaryEntry entry in map)
+				{
+					result = 31 * result + (entry.Key == null ? 0 : entry.Key.GetHashCode());
+					result = 31 * result + (entry.Value == null ? 0 : entry.Value.GetHashCode());
+				}
+				return result;
 			}
 		}
 	}

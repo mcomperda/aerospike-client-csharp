@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -21,10 +21,13 @@ namespace Aerospike.Client
 		// Server particle types.
 		public const int NULL = 0;
 		public const int INTEGER = 1;
+		public const int DOUBLE = 2;
 		public const int STRING = 3;
 		public const int BLOB = 4;
 		public const int CSHARP_BLOB = 8;
 		public const int MAP = 19;
 		public const int LIST = 20;
+		public const int LDT = 21;
+		public const int GEOJSON = 23;
 	}
 }

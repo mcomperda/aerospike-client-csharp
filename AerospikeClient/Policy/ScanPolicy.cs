@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -49,6 +49,15 @@ namespace Aerospike.Client
 		/// </summary>
 		public bool includeBinData = true;
 
+		/// <summary>
+		/// Include large data type bin values in addition to large data type bin names.
+		/// If false, LDT bin names will be returned, but LDT bin values will be empty.
+		/// If true,  LDT bin names and the entire LDT bin values will be returned.
+		/// Warning: LDT values may consume huge of amounts of memory depending on LDT size.
+		/// Default: false
+		/// </summary>
+		public bool includeLDT = false;
+	
 		/// <summary>
 		/// Terminate scan if cluster in fluctuating state.
 		/// </summary>

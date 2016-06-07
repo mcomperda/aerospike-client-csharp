@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -36,7 +36,10 @@ namespace Aerospike.Demo
 		internal Policy policy;
         internal int commandMax;
         internal bool singleBin;
+		internal bool hasGeo;
 		internal bool hasUdf;
+		internal bool hasLargeDataTypes;
+		internal bool hasCDTList;
 
 		protected internal Arguments()
 		{
@@ -55,7 +58,9 @@ namespace Aerospike.Demo
 			Dictionary<string, string> tokens = Info.Request(null, node, featuresFilter, namespaceFilter);
 
 			string features = tokens[featuresFilter];
+			hasGeo = false;
 			hasUdf = false;
+			hasCDTList = false;
 
 			if (features != null)
 			{
@@ -63,10 +68,17 @@ namespace Aerospike.Demo
 
 				foreach (string s in list)
 				{
-					if (s.Equals("udf"))
+					if (s.Equals("geo"))
+					{
+						hasGeo = true;
+					}
+					else if (s.Equals("udf"))
 					{
 						hasUdf = true;
-						break;
+					}
+					else if (s.Equals("cdt-list"))
+					{
+						hasCDTList = true;
 					}
 				}
 			}
@@ -78,13 +90,20 @@ namespace Aerospike.Demo
 				throw new Exception(string.Format("Failed to get namespace info: host={0} namespace={1}", node, ns));
 			}
 
-			string name = "single-bin";
+			singleBin = parseBoolean(namespaceTokens, "single-bin");
+			hasLargeDataTypes = parseBoolean(namespaceTokens, "ldt-enabled");
+
+			binName = singleBin ? "" : "demobin";  // Single bin servers don't need a bin name.
+		}
+
+		private static bool parseBoolean(String namespaceTokens, String name)
+		{
 			string search = name + '=';
 			int begin = namespaceTokens.IndexOf(search);
 
 			if (begin < 0)
 			{
-				throw new Exception(string.Format("Failed to find namespace attribute: host={0} namespace={1} attribute={2}", node, ns, name));
+				return false;
 			}
 
 			begin += search.Length;
@@ -96,9 +115,7 @@ namespace Aerospike.Demo
 			}
 
 			string value = namespaceTokens.Substring(begin, end - begin);
-			singleBin = Convert.ToBoolean(value);
-
-            binName = singleBin ? "" : "demobin";  // Single bin servers don't need a bin name.
+			return Convert.ToBoolean(value);
 		}
 
 		public override string ToString()

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -17,7 +17,7 @@
 namespace Aerospike.Client
 {
 	/// <summary>
-	/// Type of secondary index.
+	/// Underlying data type of secondary index.
 	/// </summary>
 	public enum IndexType
 	{
@@ -29,6 +29,11 @@ namespace Aerospike.Client
 		/// <summary>
 		/// String index.
 		/// </summary>
-		STRING
+		STRING,
+
+		/// <summary>
+		/// 2-dimensional spherical geospatial index.
+		/// </summary>
+		GEO2DSPHERE
 	}
 }

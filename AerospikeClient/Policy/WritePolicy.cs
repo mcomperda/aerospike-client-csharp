@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -53,8 +53,7 @@ namespace Aerospike.Client
 		/// <para>
 		/// Expiration values:
 		/// <list type="bullet">
-		/// <item>-1: Never expire for Aerospike 2 server versions >= 2.7.2 and Aerospike 3 server
-		/// versions >= 3.1.4.  Do not use -1 for older servers.</item>
+		/// <item>-1: Never expire. Supported by Aerospike 2 server versions >= 2.7.2 and Aerospike 3 server versions >= 3.1.4.</item>
 		/// <item>0:  Default to namespace's "default-ttl" on the server.</item>
 		/// <item>> 0: Actual expiration in seconds.</item>
 		/// </list>
@@ -63,11 +62,24 @@ namespace Aerospike.Client
 		public int expiration;
 
 		/// <summary>
-		/// Send user defined key in addition to hash digest on a record put.  
-		/// The default is to not send the user defined key.
+		/// For client operate(), return a result for every operation.
+		/// <para>
+		/// Some list operations do not return results by default (ListOperation.clear() for example).
+		/// This can sometimes make it difficult to determine the desired result offset in the returned
+		/// bin's result list.
+		/// </para>
+		/// <para>
+		/// Setting respondAllOps to true makes it easier to identify the desired result offset 
+		/// (result offset equals bin's operate sequence). This only makes sense when multiple list
+		/// operations are used in one operate call and some of those operations do not return results
+		/// by default.
+		/// </para>
+		/// <para>
+		/// Default: false
+		/// </para>
 		/// </summary>
-		public bool sendKey;
-
+		public bool respondAllOps;
+	
 		/// <summary>
 		/// Copy write policy from another write policy.
 		/// </summary>
@@ -79,7 +91,7 @@ namespace Aerospike.Client
 			this.commitLevel = other.commitLevel;
 			this.generation = other.generation;
 			this.expiration = other.expiration;
-			this.sendKey = other.sendKey;
+			this.respondAllOps = other.respondAllOps;
 		}
 
 		/// <summary>

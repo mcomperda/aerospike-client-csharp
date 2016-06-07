@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -22,27 +22,16 @@ namespace Aerospike.Demo
 {
     public class LuaExample
     {
-        private static readonly string LuaDirectory;
+		private static readonly string LuaDirectory = DemoForm.RelativeDirectory + "udf" + Path.DirectorySeparatorChar;
 
         static LuaExample()
         {
-            // Adjust path for whether using x64/x86 or AnyCPU compile target.
-            string dir = @"..\..\..\udf";
-
-            if (! Directory.Exists(dir))
-            {
-                dir = @"..\..\udf";
-            }
-            LuaDirectory = dir;
-
-            #if (! LITE)
-            LuaConfig.PackagePath = LuaDirectory + @"\?.lua";
-            #endif
+            LuaConfig.PackagePath = LuaDirectory + "?.lua";
         }
 
         public static void Register(AerospikeClient client, Policy policy, string packageName)
         {
-            string path = LuaDirectory + Path.DirectorySeparatorChar + packageName;
+            string path = LuaDirectory + packageName;
             RegisterTask task = client.Register(policy, path, packageName, Language.LUA);
             task.Wait();
         }

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -29,7 +29,7 @@ namespace Aerospike.Client
 		public static Filter Equal(string name, long value)
 		{
 			Value val = Value.Get(value);
-			return new Filter(name, val, val);
+			return new Filter(name, IndexCollectionType.DEFAULT, val.Type, val, val);
 		}
 
 		/// <summary>
@@ -40,29 +40,140 @@ namespace Aerospike.Client
 		public static Filter Equal(string name, string value)
 		{
 			Value val = Value.Get(value);
-			return new Filter(name, val, val);
+			return new Filter(name, IndexCollectionType.DEFAULT, val.Type, val, val);
 		}
 
+		/// <summary>
+		/// Create contains number filter for query on collection index.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="type">index collection type</param>
+		/// <param name="value">filter value</param>
+		public static Filter Contains(string name, IndexCollectionType type, long value)
+		{
+			Value val = Value.Get(value);
+			return new Filter(name, type, val.Type,  val, val);
+		}
+
+		/// <summary>
+		/// Create contains string filter for query on collection index.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="type">index collection type</param>
+		/// <param name="value">filter value</param>
+		public static Filter Contains(string name, IndexCollectionType type, string value)
+		{
+			Value val = Value.Get(value);
+			return new Filter(name, type, val.Type, val, val);
+		}
+		
 		/// <summary>
 		/// Create range filter for query.
 		/// Range arguments must be longs or integers which can be cast to longs.
 		/// String ranges are not supported.
 		/// </summary>
 		/// <param name="name">bin name</param>
-		/// <param name="begin">filter begin value</param>
-		/// <param name="end">filter end value</param>
+		/// <param name="begin">filter begin value inclusive</param>
+		/// <param name="end">filter end value inclusive</param>
 		public static Filter Range(string name, long begin, long end)
 		{
-			return new Filter(name, Value.Get(begin), Value.Get(end));
+			return new Filter(name, IndexCollectionType.DEFAULT, ParticleType.INTEGER, Value.Get(begin), Value.Get(end));
+		}
+
+		/// <summary>
+		/// Create range filter for query on collection index.
+		/// Range arguments must be longs or integers which can be cast to longs.
+		/// String ranges are not supported.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="type">index collection type inclusive</param>
+		/// <param name="begin">filter begin value inclusive</param>
+		/// <param name="end">filter end value</param>
+		public static Filter Range(string name, IndexCollectionType type, long begin, long end)
+		{
+			return new Filter(name, type, ParticleType.INTEGER, Value.Get(begin), Value.Get(end));
+		}
+
+		/// <summary>
+		/// Create geospatial "within region" filter for query.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="region">GeoJSON region</param>
+		public static Filter GeoWithinRegion(string name, string region)
+		{
+			return new Filter(name, IndexCollectionType.DEFAULT, ParticleType.GEOJSON, Value.Get(region), Value.Get(region));
+		}
+
+		/// <summary>
+		/// Create geospatial "within region" filter for query on collection index.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="type">index collection type</param>
+		/// <param name="region">GeoJSON region</param>
+		public static Filter GeoWithinRegion(string name, IndexCollectionType type, string region)
+		{
+			return new Filter(name, type, ParticleType.GEOJSON, Value.Get(region), Value.Get(region));
+		}
+
+		/// <summary>
+		/// Create geospatial "within radius" filter for query.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="lng">longitude</param>
+		/// <param name="lat">latitude</param>
+		/// <param name="radius">radius (meters)</param>
+		public static Filter GeoWithinRadius(string name, double lng, double lat, double radius)
+		{
+			string rgnstr = string.Format("{{ \"type\": \"AeroCircle\", " + "\"coordinates\": [[{0:F8}, {1:F8}], {2:F}] }}", lng, lat, radius);
+			return new Filter(name, IndexCollectionType.DEFAULT, ParticleType.GEOJSON, Value.Get(rgnstr), Value.Get(rgnstr));
+		}
+
+		/// <summary>
+		/// Create geospatial "within radius" filter for query on collection index.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="type">index collection type</param>
+		/// <param name="lng">longitude</param>
+		/// <param name="lat">latitude</param>
+		/// <param name="radius">radius (meters)</param>
+		public static Filter GeoWithinRadius(string name, IndexCollectionType type, double lng, double lat, double radius)
+		{
+			string rgnstr = string.Format("{{ \"type\": \"AeroCircle\", " + "\"coordinates\": [[{0:F8}, {1:F8}], {2:F}] }}", lng, lat, radius);
+			return new Filter(name, type, ParticleType.GEOJSON, Value.Get(rgnstr), Value.Get(rgnstr));
+		}
+
+		/// <summary>
+		/// Create geospatial "containing point" filter for query.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="point">GeoJSON point</param>
+		public static Filter GeoContains(string name, string point)
+		{
+			return new Filter(name, IndexCollectionType.DEFAULT, ParticleType.GEOJSON, Value.Get(point), Value.Get(point));
+		}
+
+		/// <summary>
+		/// Create geospatial "containing point" filter for query on collection index.
+		/// </summary>
+		/// <param name="name">bin name</param>
+		/// <param name="type">index collection type</param>
+		/// <param name="point">GeoJSON point</param>
+		public static Filter GeoContains(string name, IndexCollectionType type, string point)
+		{
+			return new Filter(name, type, ParticleType.GEOJSON, Value.Get(point), Value.Get(point));
 		}
 
 		private readonly string name;
+		private readonly IndexCollectionType colType;
+		private readonly int valType;
 		private readonly Value begin;
 		private readonly Value end;
 
-		private Filter(string name, Value begin, Value end)
+		private Filter(string name, IndexCollectionType colType, int valType, Value begin, Value end)
 		{
 			this.name = name;
+			this.colType = colType;
+			this.valType = valType;
 			this.begin = begin;
 			this.end = end;
 		}
@@ -81,7 +192,7 @@ namespace Aerospike.Client
 			offset += len + 1;
 
 			// Write particle type.
-			buf[offset++] = (byte)begin.Type;
+			buf[offset++] = (byte)valType;
 
 			// Write filter begin.
 			len = begin.Write(buf, offset + 4);
@@ -94,6 +205,11 @@ namespace Aerospike.Client
 			offset += len + 4;
 
 			return offset;
+		}
+
+		internal IndexCollectionType CollectionType
+		{
+			get {return colType;}
 		}
 	}
 }

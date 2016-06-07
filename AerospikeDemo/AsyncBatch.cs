@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -15,6 +15,7 @@
  * the License.
  */
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Aerospike.Client;
 
@@ -105,17 +106,18 @@ namespace Aerospike.Demo
 					try
 					{
 						// All writes succeeded. Run batch queries in parallel.
-						parent.taskSize = 5;
+						parent.taskSize = 6;
 						parent.BatchExistsArray();
 						parent.BatchExistsSequence();
 						parent.BatchGetArray();
 						parent.BatchGetSequence();
 						parent.BatchGetHeaders();
+						parent.BatchReadComplex();
 					}
 					catch (Exception e)
 					{
-						parent.console.Error("Batch failed: namespace={0} set={1} key={2} exception={3}", 
-							key.ns, key.setName, key.userKey, e.Message);
+						parent.console.Error("Batch failed: " + e.Message);
+						parent.AllTasksComplete();
 					}
 				}
 			}
@@ -132,7 +134,7 @@ namespace Aerospike.Demo
 		/// </summary>
 		private void BatchExistsArray()
 		{
-			client.Exists(args.policy, new ExistsArrayHandler(this), sendKeys);
+			client.Exists(null, new ExistsArrayHandler(this), sendKeys);
 		}
 
 		private class ExistsArrayHandler : ExistsArrayListener
@@ -168,7 +170,7 @@ namespace Aerospike.Demo
 		/// </summary>
 		private void BatchExistsSequence()
 		{
-			client.Exists(args.policy, new ExistsSequenceHandler(this), sendKeys);
+			client.Exists(null, new ExistsSequenceHandler(this), sendKeys);
 		}
 
 		private class ExistsSequenceHandler : ExistsSequenceListener
@@ -203,7 +205,7 @@ namespace Aerospike.Demo
 		/// </summary>
 		private void BatchGetArray()
 		{
-			client.Get(args.policy, new RecordArrayHandler(this), sendKeys);
+			client.Get(null, new RecordArrayHandler(this), sendKeys);
 		}
 
 		private class RecordArrayHandler : RecordArrayListener
@@ -253,7 +255,7 @@ namespace Aerospike.Demo
 		/// </summary>
 		private void BatchGetSequence()
 		{
-			client.Get(args.policy, new RecordSequenceHandler(this), sendKeys);
+			client.Get(null, new RecordSequenceHandler(this), sendKeys);
 		}
 
 		private class RecordSequenceHandler : RecordSequenceListener
@@ -296,7 +298,7 @@ namespace Aerospike.Demo
 		/// </summary>
 		private void BatchGetHeaders()
 		{
-			client.GetHeader(args.policy, new RecordHeaderArrayHandler(this), sendKeys);
+			client.GetHeader(null, new RecordHeaderArrayHandler(this), sendKeys);
 		}
 
 		private class RecordHeaderArrayHandler: RecordArrayListener
@@ -342,6 +344,75 @@ namespace Aerospike.Demo
 			}
 		}
 
+		private void BatchReadComplex()
+		{
+			// Batch gets into one call.
+			// Batch allows multiple namespaces in one call, but example test environment may only have one namespace.
+			string[] bins = new string[] { binName };
+			List<BatchRead> records = new List<BatchRead>();
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 1), bins));
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 2), true));
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 3), true));
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 4), false));
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 5), true));
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 6), true));
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 7), bins));
+
+			// This record should be found, but the requested bin will not be found.
+			records.Add(new BatchRead(new Key(args.ns, args.set, KeyPrefix + 8), new string[] { "binnotfound" }));
+
+			// This record should not be found.
+			records.Add(new BatchRead(new Key(args.ns, args.set, "keynotfound"), bins));
+
+			// Execute batch.
+			client.Get(null, new BatchListHandler(this), records);
+		}
+
+		private class BatchListHandler : BatchListListener
+		{
+			private readonly AsyncBatch parent;
+
+			public BatchListHandler(AsyncBatch parent)
+			{
+				this.parent = parent;
+			}
+
+			public virtual void OnSuccess(List<BatchRead> records)
+			{
+				// Show results.
+				int found = 0;
+				foreach (BatchRead record in records)
+				{
+					Key key = record.key;
+					Record rec = record.record;
+
+					if (rec != null)
+					{
+						found++;
+						parent.console.Info("Record: ns={0} set={1} key={2} bin={3} value={4}",
+							key.ns, key.setName, key.userKey, parent.binName, rec.GetValue(parent.binName));
+					}
+					else
+					{
+						parent.console.Info("Record not found: ns={0} set={1} key={2} bin={3}",
+							key.ns, key.setName, key.userKey, parent.binName);
+					}
+				}
+
+				if (found != 8)
+				{
+					parent.console.Error("Records found mismatch. Expected 8. Received " + found);
+				}
+				parent.TaskComplete();
+			}
+
+			public virtual void OnFailure(AerospikeException e)
+			{
+				parent.console.Error("Batch read complex failed: " + Util.GetErrorMessage(e));
+				parent.TaskComplete();
+			}
+		}
+		
 		private void WaitTillComplete()
 		{
 			lock (this)

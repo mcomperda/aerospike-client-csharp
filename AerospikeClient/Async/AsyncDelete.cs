@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -20,13 +20,17 @@ namespace Aerospike.Client
 	{
 		private readonly WritePolicy policy;
 		private readonly DeleteListener listener;
+		private readonly Key key;
+		private readonly Partition partition;
 		private bool existed;
 
 		public AsyncDelete(AsyncCluster cluster, WritePolicy policy, Key key, DeleteListener listener) 
-			: base(cluster, key)
+			: base(cluster)
 		{
 			this.policy = policy;
 			this.listener = listener;
+			this.key = key;
+			this.partition = new Partition(key);
 		}
 
 		protected internal override Policy GetPolicy()
@@ -39,9 +43,14 @@ namespace Aerospike.Client
 			SetDelete(policy, key);
 		}
 
+		protected internal override AsyncNode GetNode()
+		{
+			return (AsyncNode)cluster.GetMasterNode(partition);
+		}
+
 		protected internal override void ParseResult()
 		{
-			int resultCode = dataBuffer[5];
+			int resultCode = dataBuffer[dataOffset + 5];
 
 			if (resultCode == 0)
 			{

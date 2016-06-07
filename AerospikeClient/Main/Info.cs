@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -199,7 +199,7 @@ namespace Aerospike.Client
 			}
 			catch (Exception)
 			{
-				conn.Close();
+				node.CloseConnection(conn);
 				throw;
 			}
 		}
@@ -225,7 +225,7 @@ namespace Aerospike.Client
 			catch (Exception)
 			{
 				// Garbage may be in socket.  Do not put back into pool.
-				conn.Close();
+				node.CloseConnection(conn);
 				throw;
 			}
 		}
@@ -251,7 +251,7 @@ namespace Aerospike.Client
 			catch (Exception)
 			{
 				// Garbage may be in socket.  Do not put back into pool.
-				conn.Close();
+				node.CloseConnection(conn);
 				throw;
 			}
 		}
@@ -276,7 +276,7 @@ namespace Aerospike.Client
 			catch (Exception)
 			{
 				// Garbage may be in socket.  Do not put back into pool.
-				conn.Close();
+				node.CloseConnection(conn);
 				throw;
 			}
 		}

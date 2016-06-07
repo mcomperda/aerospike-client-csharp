@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -37,10 +37,16 @@ namespace Aerospike.Client
 		private readonly Host host;
 		private Host[] aliases;
 		protected internal readonly IPEndPoint address;
+		private Connection tendConnection;
 		private readonly BlockingCollection<Connection> connectionQueue;
-		private int partitionGeneration = -1;
+		private int connectionCount;
+		protected internal int partitionGeneration = -1;
 		protected internal int referenceCount;
 		protected internal int failures;
+		protected internal readonly bool hasGeo;
+		protected internal readonly bool hasDouble;
+		protected internal readonly bool hasBatchIndex;
+		protected internal readonly bool hasReplicasAll;
 		protected internal volatile bool active = true;
 
 		/// <summary>
@@ -54,6 +60,11 @@ namespace Aerospike.Client
 			this.name = nv.name;
 			this.aliases = nv.aliases;
 			this.address = nv.address;
+			this.tendConnection = nv.conn;
+			this.hasGeo = nv.hasGeo;
+			this.hasDouble = nv.hasDouble;
+			this.hasBatchIndex = nv.hasBatchIndex;
+			this.hasReplicasAll = nv.hasReplicasAll;
 
 			// Assign host to first IP alias because the server identifies nodes 
 			// by IP address (not hostname). 
@@ -75,23 +86,33 @@ namespace Aerospike.Client
 		/// <exception cref="Exception">if status request fails</exception>
 		public void Refresh(List<Host> friends)
 		{
-			Connection conn = GetConnection(1000);
+			if (tendConnection.IsClosed())
+			{
+				tendConnection = new Connection(address, cluster.connectionTimeout);
+			}
 
 			try
 			{
-				Dictionary<string, string> infoMap = Info.Request(conn, "node", "partition-generation", "services");
+				string[] commands = cluster.useServicesAlternate ? 
+					new string[] {"node", "partition-generation", "services-alternate"} : 
+					new string[] {"node", "partition-generation", "services"};
+
+				Dictionary<string, string> infoMap = Info.Request(tendConnection, commands);
 				VerifyNodeName(infoMap);
 
 				if (AddFriends(infoMap, friends))
 				{
-					UpdatePartitions(conn, infoMap);
+					UpdatePartitions(tendConnection, infoMap);
 				}
-				PutConnection(conn);
 			}
 			catch (Exception)
 			{
-				conn.Close();
-				throw;
+				// Swallow exception if node was closed in another thread.
+				if (! tendConnection.IsClosed())
+				{
+					tendConnection.Close();
+					throw;
+				}
 			}
 		}
 
@@ -119,7 +140,8 @@ namespace Aerospike.Client
 		private bool AddFriends(Dictionary<string, string> infoMap, List<Host> friends)
 		{
 			// Parse the service addresses and add the friends to the list.
-			string friendString = infoMap["services"];
+			String command = cluster.useServicesAlternate ? "services-alternate" : "services";
+			string friendString = infoMap[command];
 
 			if (friendString == null || friendString.Length == 0)
 			{
@@ -225,29 +247,47 @@ namespace Aerospike.Client
 					{
 						// Set timeout failed. Something is probably wrong with timeout
 						// value itself, so don't empty queue retrying.  Just get out.
-						conn.Close();
+						CloseConnection(conn);
 						throw new AerospikeException.Connection(e);
 					}
 				}
-				conn.Close();
+				CloseConnection(conn);
 			}
-			conn = new Connection(address, timeoutMillis, cluster.maxSocketIdle);
 
-			if (cluster.user != null)
+			if (Interlocked.Increment(ref connectionCount) <= cluster.connectionQueueSize)
 			{
 				try
 				{
-					AdminCommand command = new AdminCommand();
-					command.Authenticate(conn, cluster.user, cluster.password);
+					conn = new Connection(address, timeoutMillis, cluster.maxSocketIdleMillis);
 				}
 				catch (Exception)
 				{
-					// Socket not authenticated.  Do not put back into pool.
-					conn.Close();
+					Interlocked.Decrement(ref connectionCount);
 					throw;
 				}
+
+				if (cluster.user != null)
+				{
+					try
+					{
+						AdminCommand command = new AdminCommand();
+						command.Authenticate(conn, cluster.user, cluster.password);
+					}
+					catch (Exception)
+					{
+						// Socket not authenticated.  Do not put back into pool.
+						CloseConnection(conn);
+						throw;
+					}
+				}
+				return conn;
 			}
-			return conn;
+			else
+			{
+				Interlocked.Decrement(ref connectionCount);
+				throw new AerospikeException.Connection(ResultCode.NO_MORE_CONNECTIONS,
+					"Node " + this + " max connections " + cluster.connectionQueueSize + " would be exceeded.");
+			}
 		}
 
 		/// <summary>
@@ -258,8 +298,17 @@ namespace Aerospike.Client
 		{
 			if (!active || !connectionQueue.TryAdd(conn))
 			{
-				conn.Close();
+				CloseConnection(conn);
 			}
+		}
+
+		/// <summary>
+		/// Close connection and decrement connection count.
+		/// </summary>
+		public void CloseConnection(Connection conn)
+		{
+			Interlocked.Decrement(ref connectionCount);
+			conn.Close();
 		}
 
 		/// <summary>
@@ -325,6 +374,16 @@ namespace Aerospike.Client
 		}
 
 		/// <summary>
+		/// Use new batch protocol if server supports it and useBatchDirect is not set.
+		/// </summary>
+		public bool UseNewBatch(BatchPolicy policy)
+		{
+			return !policy.useBatchDirect && hasBatchIndex;
+		}
+
+		public bool HasBatchIndex {get{return hasBatchIndex;}}
+	
+		/// <summary>
 		/// Return node name and host address in string format.
 		/// </summary>
 		public override sealed string ToString()
@@ -361,8 +420,11 @@ namespace Aerospike.Client
 
 		protected internal virtual void CloseConnections()
 		{
+			// Close tend connection after making reference copy.
+			Connection conn = tendConnection;
+			conn.Close();
+
 			// Empty connection pool.
-			Connection conn;
 			while (connectionQueue.TryTake(out conn))
 			{
 				conn.Close();

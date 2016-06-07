@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -22,14 +22,18 @@ namespace Aerospike.Client
 	{
 		private readonly Policy policy;
 		private readonly RecordListener listener;
+		protected internal readonly Key key;
+		protected internal readonly Partition partition;
 		private readonly string[] binNames;
-		private Record record;
+		protected Record record;
 
 		public AsyncRead(AsyncCluster cluster, Policy policy, RecordListener listener, Key key, string[] binNames) 
-			: base(cluster, key)
+			: base(cluster)
 		{
 			this.policy = policy;
 			this.listener = listener;
+			this.key = key;
+			this.partition = new Partition(key);
 			this.binNames = binNames;
 		}
 
@@ -43,14 +47,19 @@ namespace Aerospike.Client
 			SetRead(policy, key, binNames);
 		}
 
+		protected internal override AsyncNode GetNode()
+		{
+			return (AsyncNode)cluster.GetReadNode(partition, policy.replica);
+		}
+
 		protected internal sealed override void ParseResult()
 		{
-			int resultCode = dataBuffer[5];
-			int generation = ByteUtil.BytesToInt(dataBuffer, 6);
-			int expiration = ByteUtil.BytesToInt(dataBuffer, 10);
-			int fieldCount = ByteUtil.BytesToShort(dataBuffer, 18);
-			int opCount = ByteUtil.BytesToShort(dataBuffer, 20);
-			dataOffset = Command.MSG_REMAINING_HEADER_SIZE;
+			int resultCode = dataBuffer[dataOffset + 5];
+			int generation = ByteUtil.BytesToInt(dataBuffer, dataOffset + 6);
+			int expiration = ByteUtil.BytesToInt(dataBuffer, dataOffset + 10);
+			int fieldCount = ByteUtil.BytesToShort(dataBuffer, dataOffset + 18);
+			int opCount = ByteUtil.BytesToShort(dataBuffer, dataOffset + 20);
+			dataOffset += Command.MSG_REMAINING_HEADER_SIZE;
 
 			if (resultCode == 0)
 			{
@@ -109,12 +118,17 @@ namespace Aerospike.Client
 				{
 					bins = new Dictionary<string, object>();
 				}
-				bins[name] = value;
+				AddBin(bins, name, value);
 			}
 			return new Record(bins, generation, expiration);
 		}
 
-		protected internal sealed override void OnSuccess()
+		protected internal virtual void AddBin(Dictionary<string, object> bins, string name, object value)
+		{
+			bins[name] = value;
+		}
+
+		protected internal override void OnSuccess()
 		{
 			if (listener != null)
 			{
@@ -122,7 +136,7 @@ namespace Aerospike.Client
 			}
 		}
 
-		protected internal sealed override void OnFailure(AerospikeException e)
+		protected internal override void OnFailure(AerospikeException e)
 		{
 			if (listener != null)
 			{

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -21,15 +21,15 @@ namespace Aerospike.Client
 	/// <summary>
 	/// Task used to poll for UDF registration completion.
 	/// </summary>
-	public sealed class RegisterTask : Task
+	public sealed class RegisterTask : BaseTask
 	{
 		private readonly string packageName;
 
 		/// <summary>
 		/// Initialize task with fields needed to query server nodes.
 		/// </summary>
-		public RegisterTask(Cluster cluster, string packageName)
-			: base(cluster, false)
+		public RegisterTask(Cluster cluster, Policy policy, string packageName)
+			: base(cluster, policy)
 		{
 			this.packageName = packageName;
 		}
@@ -39,13 +39,19 @@ namespace Aerospike.Client
 		/// </summary>
 		public override bool QueryIfDone()
 		{
-			string command = "udf-list";
+			// All nodes must respond with complete to be considered done.
 			Node[] nodes = cluster.Nodes;
-			bool done = false;
+
+			if (nodes.Length == 0)
+			{
+				return false;
+			}
+
+			string command = "udf-list";
 
 			foreach (Node node in nodes)
 			{
-				string response = Info.Request(node, command);
+				string response = Info.Request(policy,  node, command);
 				string find = "filename=" + packageName;
 				int index = response.IndexOf(find);
 
@@ -53,9 +59,8 @@ namespace Aerospike.Client
 				{
 					return false;
 				}
-				done = true;
 			}
-			return done;
+			return true;
 		}
 	}
 }

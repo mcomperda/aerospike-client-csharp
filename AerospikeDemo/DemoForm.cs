@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -29,6 +29,8 @@ namespace Aerospike.Demo
 {
     public partial class DemoForm : Form
     {
+		public static readonly string RelativeDirectory = FindRelativeDirectory();
+
         private Thread thread;
         private volatile ExampleTreeNode currentExample;
         private Console console;
@@ -72,6 +74,7 @@ namespace Aerospike.Demo
                     new ExampleTreeNode("Expire", new Expire(console)),
                     new ExampleTreeNode("Touch", new Touch(console)),
                     new ExampleTreeNode("Operate", new Operate(console)),
+                    new ExampleTreeNode("OperateList", new OperateList(console)),
                     new ExampleTreeNode("Delete Bin", new DeleteBin(console)),
                     new ExampleTreeNode("Join", new GetAndJoin(console)),
                     new ExampleTreeNode("Scan Parallel", new ScanParallel(console)),
@@ -79,6 +82,8 @@ namespace Aerospike.Demo
                     new ExampleTreeNode("Async PutGet", new AsyncPutGet(console)),
                     new ExampleTreeNode("Async Batch", new AsyncBatch(console)),
                     new ExampleTreeNode("Async Scan", new AsyncScan(console)),
+                    new ExampleTreeNode("Async Query", new AsyncQuery(console)),
+                    new ExampleTreeNode("Async UDF", new AsyncUserDefinedFunction(console)),
                     new ExampleTreeNode("List/Map", new ListMap(console)),
                     new ExampleTreeNode("User Defined Function", new UserDefinedFunction(console)),
                     new ExampleTreeNode("Large List", new LargeList(console)),
@@ -86,12 +91,13 @@ namespace Aerospike.Demo
                     new ExampleTreeNode("Large Stack", new LargeStack(console)),
                     new ExampleTreeNode("Query Integer", new QueryInteger(console)),
                     new ExampleTreeNode("Query String", new QueryString(console)),
-                    #if (! LITE)
+                    new ExampleTreeNode("Query Region", new QueryRegion(console)),
+                    new ExampleTreeNode("Query Region Filter", new QueryRegionFilter(console)),
                     new ExampleTreeNode("Query Filter", new QueryFilter(console)),
                     new ExampleTreeNode("Query Sum", new QuerySum(console)),
                     new ExampleTreeNode("Query Average", new QueryAverage(console)),
-                    #endif
-                    new ExampleTreeNode("Query Execute", new QueryExecute(console))
+                    new ExampleTreeNode("Query Execute", new QueryExecute(console)),
+                    new ExampleTreeNode("Query Geo Collection", new QueryGeoCollection(console))
                 });
                 TreeNode benchmarks = new TreeNode("Benchmarks", new TreeNode[] {
                     new ExampleTreeNode("Initialize", new BenchmarkInitialize(console)),
@@ -299,7 +305,7 @@ namespace Aerospike.Demo
             catch (Exception ex)
             {
                 console.Error(Util.GetErrorMessage(ex));
-                MessageBox.Show(ex.Message);
+                //MessageBox.Show(ex.Message);
             }
             finally
             {
@@ -517,6 +523,31 @@ namespace Aerospike.Demo
             e.SuppressKeyPress = !((e.KeyValue >= 48 && e.KeyValue <= 57)
                 || e.KeyValue == 127 || e.KeyValue == 8 || e.KeyValue == 37 || e.KeyValue == 39);
         }
+
+		private static string FindRelativeDirectory()
+		{
+			// Look for "udf" directory as relative path from executable.
+			// First try relative path from AnyCPU executable default location.
+			string dirname = "udf";
+			string orig = ".." + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar;
+			string path = orig;
+
+			for (int i = 0; i < 8; i++)
+			{
+				if (Directory.Exists(path + dirname))
+				{
+					// udf directory found.  Use corresponding directory path. 
+					return path;
+				}
+
+				// Try next level up.
+				path += ".." + Path.DirectorySeparatorChar;
+			}
+
+			// Failed to find path.  Just return original directory which means source code and lua files
+			// can't be accessed.  Program can still run though.
+			return orig;
+		}
     }
 
     class ExampleTreeNode : TreeNode
@@ -541,14 +572,7 @@ namespace Aerospike.Demo
 
         public string Read()
         {
-            // Adjust path for whether using x64/x86 or AnyCPU compile target.
-            string filename = example.GetType().Name + ".cs";
-            string path = @"..\..\..\" + filename;
-
-            if (! File.Exists(path))
-            {
-                path = @"..\..\" + filename;
-            }
+            string path = DemoForm.RelativeDirectory + example.GetType().Name + ".cs";
             return File.ReadAllText(path);
         }
 

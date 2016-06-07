@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -15,6 +15,7 @@
  * the License.
  */
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 
@@ -25,6 +26,8 @@ namespace Aerospike.Client
 	/// </summary>
 	public sealed class Record
 	{
+		private static DateTime Epoch = new DateTime(2010, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+
 		/// <summary>
 		/// Map of requested name/value bins.
 		/// </summary>
@@ -61,9 +64,17 @@ namespace Aerospike.Client
 				return null;
 			}
 
-			object obj;
+			object obj = null;
 			bins.TryGetValue(name, out obj);
 			return obj;
+		}
+
+		/// <summary>
+		/// Get bin value as string.
+		/// </summary>
+		public string GetString(string name)
+		{
+			return (string)GetValue(name);
 		}
 
 		/// <summary>
@@ -71,7 +82,10 @@ namespace Aerospike.Client
 		/// </summary>
 		public double GetDouble(string name)
 		{
-			return BitConverter.Int64BitsToDouble((long)GetValue(name));
+			// The server may return number as double or long.
+			// Convert bits if returned as long.
+			object result = GetValue(name);
+			return (result is double) ? (double)result : (result != null) ? BitConverter.Int64BitsToDouble((long)result) : 0.0; 
 		}
 
 		/// <summary>
@@ -79,7 +93,7 @@ namespace Aerospike.Client
 		/// </summary>
 		public float GetFloat(string name)
 		{
-			return (float)BitConverter.Int64BitsToDouble((long)GetValue(name));
+			return (float)GetDouble(name);
 		}
 
 		/// <summary>
@@ -87,7 +101,10 @@ namespace Aerospike.Client
 		/// </summary>
 		public long GetLong(string name)
 		{
-			return (long)GetValue(name);
+			// The server always returns numbers as longs if bin found.
+			// If bin not found, the result will be null.  Convert null to zero.
+			object result = GetValue(name);
+			return (result != null) ? (long)result : 0;
 		}
 
 		/// <summary>
@@ -95,7 +112,7 @@ namespace Aerospike.Client
 		/// </summary>
 		public ulong GetULong(string name)
 		{
-			return (ulong)GetValue(name);
+			return (ulong)GetLong(name);
 		}
 
 		/// <summary>
@@ -103,7 +120,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public int GetInt(string name)
 		{
-			return (int)(long)GetValue(name);
+			// The server always returns numbers as longs, so get long and cast.
+			return (int)GetLong(name);
 		}
 
 		/// <summary>
@@ -111,7 +129,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public uint GetUInt(string name)
 		{
-			return (uint)(long)GetValue(name);
+			// The server always returns numbers as longs, so get long and cast.
+			return (uint)GetLong(name);
 		}
 
 		/// <summary>
@@ -119,7 +138,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public short GetShort(string name)
 		{
-			return (short)(long)GetValue(name);
+			// The server always returns numbers as longs, so get long and cast.
+			return (short)GetLong(name);
 		}
 
 		/// <summary>
@@ -127,7 +147,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public ushort GetUShort(string name)
 		{
-			return (ushort)(long)GetValue(name);
+			// The server always returns numbers as longs, so get long and cast.
+			return (ushort)GetLong(name);
 		}
 
 		/// <summary>
@@ -135,7 +156,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public byte GetByte(string name)
 		{
-			return (byte)(long)GetValue(name);
+			// The server always returns numbers as longs, so get long and cast.
+			return (byte)GetLong(name);
 		}
 
 		/// <summary>
@@ -143,7 +165,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public sbyte GetSBytes(string name)
 		{
-			return (sbyte)(long)GetValue(name);
+			// The server always returns numbers as longs, so get long and cast.
+			return (sbyte)GetLong(name);
 		}
 
 		/// <summary>
@@ -151,8 +174,49 @@ namespace Aerospike.Client
 		/// </summary>
 		public bool GetBool(string name)
 		{
-			long v = (long)GetValue(name);
-			return (v != 0) ? true : false;
+			// The server always returns booleans as longs, so get long and convert.
+			return (GetLong(name) != 0) ? true : false;
+		}
+
+		/// <summary>
+		/// Get bin value as list.
+		/// </summary>
+		public IList GetList(string name)
+		{
+			return (IList)GetValue(name);
+		}
+
+		/// <summary>
+		/// Get bin value as GeoJSON.
+		/// </summary>
+		public string GetGeoJSON(string name)
+		{
+			return (string)GetValue(name);
+		}
+	
+		/**
+		 * Convert record expiration (seconds from Jan 01 2010 00:00:00 GMT) to
+		 * ttl (seconds from now).
+		 */
+		public int TimeToLive
+		{
+			get
+			{
+				// This is the server's flag indicating the record never expires.
+				if (expiration == 0)
+				{
+					// Convert to client-side convention for "never expires".
+					return -1;
+				}
+
+				// Subtract epoch from current time.
+				int now = (int)DateTime.UtcNow.Subtract(Epoch).TotalSeconds;
+
+				// Record may not have expired on server, but delay or clock differences may
+				// cause it to look expired on client. Floor at 1, not 0, to avoid old
+				// "never expires" interpretation.
+				return (expiration < 0 || expiration > now) ? expiration - now : 1;
+			}
 		}
 
 		/// <summary>

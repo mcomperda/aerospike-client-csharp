@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -14,19 +14,21 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-using LuaInterface;
+using System;
+using System.IO;
 
 namespace Aerospike.Client
 {
 	/// <summary>
-	/// Lua static configuration variables.
+	/// Lua static configuration variables. These variables apply to all AerospikeClient instances
+	/// in a single process.
 	/// </summary>
 	public sealed class LuaConfig
 	{
 		/// <summary>
 		/// Directory location which contains user defined Lua source files.
 		/// </summary>
-		public static string PackagePath = "udf/?.lua";
+		public static string PackagePath = "udf" + Path.DirectorySeparatorChar + "?.lua";
 
 		/// <summary>
 		/// Maximum number of Lua runtime instances to cache at any point in time.

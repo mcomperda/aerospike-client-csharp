@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -31,16 +31,16 @@ namespace Aerospike.Client
 		private DateTime timestamp;
 
 		public Connection(IPEndPoint address, int timeoutMillis)
-			: this(address, timeoutMillis, 14)
+			: this(address, timeoutMillis, 14000)
 		{
 		}
 
 		/// <summary>
 		/// Create socket with connection timeout.
 		/// </summary>
-		public Connection(IPEndPoint address, int timeoutMillis, int maxSocketIdleSeconds)
+		public Connection(IPEndPoint address, int timeoutMillis, int maxSocketIdleMillis)
 		{
-			this.maxSocketIdleMillis = (double)(maxSocketIdleSeconds * 1000);
+			this.maxSocketIdleMillis = (double)(maxSocketIdleMillis);
 
 			try
 			{
@@ -62,23 +62,21 @@ namespace Aerospike.Client
 				IAsyncResult result = socket.BeginConnect(address, null, null);
 				WaitHandle wait = result.AsyncWaitHandle;
 
-				try
+				// Never allow timeoutMillis of zero because WaitOne returns 
+				// immediately when that happens!
+				if (wait.WaitOne(timeoutMillis))
 				{
-					// Never allow timeoutMillis of zero here because WaitOne returns 
-					// immediately when that happens!
-					if (wait.WaitOne(timeoutMillis))
-					{
-						socket.EndConnect(result);
-					}
-					else
-					{
-						socket.Close();
-						throw new SocketException((int)SocketError.TimedOut);
-					}
+					// EndConnect will automatically close AsyncWaitHandle.
+					socket.EndConnect(result);
 				}
-				finally
+				else
 				{
-					wait.Close();
+					// Close socket, but do not close AsyncWaitHandle. If AsyncWaitHandle is closed,
+					// the disposed handle can be referenced after the timeout exception is thrown.
+					// The handle will eventually get closed by the garbage collector.
+					// See: https://social.msdn.microsoft.com/Forums/en-US/313cf28c-2a6d-498e-8188-7a0639dbd552/tcpclientbeginconnect-issue?forum=netfxnetcom
+					socket.Close();
+					throw new SocketException((int)SocketError.TimedOut);
 				}
 				timestamp = DateTime.UtcNow;
 			}
@@ -137,11 +135,6 @@ namespace Aerospike.Client
 			}
 		}
 
-		public bool IsConnected()
-		{
-			return socket.Connected;
-		}
-
 		/// <summary>
 		/// Is socket connected and used within specified limits.
 		/// </summary>
@@ -150,6 +143,14 @@ namespace Aerospike.Client
 			return socket.Connected && (DateTime.UtcNow.Subtract(timestamp).TotalMilliseconds <= maxSocketIdleMillis);
 		}
 
+		/// <summary>
+		/// Is socket closed from client perspective only.
+		/// </summary>
+		public bool IsClosed()
+		{
+			return ! socket.Connected;
+		}
+		
 		public void UpdateLastUsed()
 		{
 			this.timestamp = DateTime.UtcNow;
@@ -180,26 +181,23 @@ namespace Aerospike.Client
 			IAsyncResult result = Dns.BeginGetHostAddresses(host, null, null);
 			WaitHandle wait = result.AsyncWaitHandle;
 
-			try
+			if (wait.WaitOne(timeoutMillis))
 			{
-				if (wait.WaitOne(timeoutMillis))
-				{
-					IPAddress[] addresses = Dns.EndGetHostAddresses(result);
+				// EndGetHostAddresses will automatically close AsyncWaitHandle.
+				IPAddress[] addresses = Dns.EndGetHostAddresses(result);
 
-					if (addresses.Length == 0)
-					{
-						throw new AerospikeException.Connection("Failed to find addresses for " + host);
-					}
-					return addresses;
-				}
-				else
+				if (addresses.Length == 0)
 				{
-					throw new AerospikeException.Connection("Failed to resolve " + host);
+					throw new AerospikeException.Connection("Failed to find addresses for " + host);
 				}
+				return addresses;
 			}
-			finally
+			else
 			{
-				wait.Close();
+				// Do not close AsyncWaitHandle because the disposed handle can be referenced after 
+				// the exception is thrown. The handle will eventually get closed by the garbage collector.
+				// See: https://social.msdn.microsoft.com/Forums/en-US/313cf28c-2a6d-498e-8188-7a0639dbd552/tcpclientbeginconnect-issue?forum=netfxnetcom
+				throw new AerospikeException.Connection("Failed to resolve " + host);
 			}
 		}
 

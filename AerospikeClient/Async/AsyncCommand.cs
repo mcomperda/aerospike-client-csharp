@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -27,17 +27,26 @@ namespace Aerospike.Client
 	public abstract class AsyncCommand : Command
 	{
 		public static readonly EventHandler<SocketAsyncEventArgs> SocketListener = new EventHandler<SocketAsyncEventArgs>(SocketHandler);
+		private const int SUCCESS = 1;
+		private const int FAIL_TIMEOUT = 2;
+		private const int FAIL_NETWORK_INIT = 3;
+		private const int FAIL_NETWORK_ERROR = 4;
+		private const int FAIL_APPLICATION_INIT = 5;
+		private const int FAIL_APPLICATION_ERROR = 6;
 
 		protected internal readonly AsyncCluster cluster;
 		private AsyncConnection conn;
 		private AsyncNode node;
 		private SocketAsyncEventArgs eventArgs;
+		private BufferSegment segmentOrig;
+		private BufferSegment segment;
 		private Stopwatch watch;
-		private byte[] oldDataBuffer;
 		protected internal int dataLength;
 		private int timeout;
 		private int iteration;
 		private int complete;
+		private int failedNodes;
+		private int failedConns;
 		private bool inAuthenticate;
 		protected internal bool inHeader = true;
 
@@ -49,13 +58,15 @@ namespace Aerospike.Client
 		public void Execute()
 		{
 			eventArgs = cluster.GetEventArgs();
+			segment = segmentOrig = eventArgs.UserToken as BufferSegment;
 			eventArgs.UserToken = this;
-			dataBuffer = eventArgs.Buffer;
 
-			if (dataBuffer != null && cluster.HasBufferChanged(dataBuffer))
+			if (cluster.HasBufferChanged(segment))
 			{
-				// Reset dataBuffer in SizeBuffer().
-				dataBuffer = null;
+				// Reset buffer in SizeBuffer().
+				segment.buffer = null;
+				segment.offset = 0;
+				segment.size = 0;
 			}
 
 			Policy policy = GetPolicy();
@@ -74,7 +85,7 @@ namespace Aerospike.Client
 		{
 			if (complete != 0)
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(complete);
 				return;
 			}
 
@@ -88,7 +99,7 @@ namespace Aerospike.Client
 				if (conn == null)
 				{
 					conn = new AsyncConnection(node.address, cluster);
-					eventArgs.SetBuffer(0, 0);
+					eventArgs.SetBuffer(segment.buffer, segment.offset, 0);
 
 					if (!conn.ConnectAsync(eventArgs))
 					{
@@ -102,6 +113,7 @@ namespace Aerospike.Client
 			}
 			catch (AerospikeException.InvalidNode)
 			{
+				failedNodes++;
 				if (!RetryOnInit())
 				{
 					throw;
@@ -109,6 +121,7 @@ namespace Aerospike.Client
 			}
 			catch (AerospikeException.Connection)
 			{
+				failedConns++;
 				if (!RetryOnInit())
 				{
 					throw;
@@ -134,7 +147,7 @@ namespace Aerospike.Client
 		{
 			if (complete != 0)
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(complete);
 				return true;
 			}
 
@@ -145,7 +158,9 @@ namespace Aerospike.Client
 				return FailOnNetworkInit();
 			}
 
-			if (watch != null && (watch.ElapsedMilliseconds + policy.sleepBetweenRetries) > timeout)
+			// Disable sleep between retries.  Sleeping in asynchronous mode makes no sense.
+			//if (watch != null && (watch.ElapsedMilliseconds + policy.sleepBetweenRetries) > timeout)
+			if (watch != null && watch.ElapsedMilliseconds > timeout)
 			{
 				// Might as well stop here because the transaction will
 				// timeout after sleep completed.
@@ -155,10 +170,11 @@ namespace Aerospike.Client
 			// Prepare for retry.
 			ResetConnection();
 
-			if (policy.sleepBetweenRetries > 0)
-			{
-				Util.Sleep(policy.sleepBetweenRetries);
-			}
+			// Disable sleep between retries.  Sleeping in asynchronous mode makes no sense.
+			//if (policy.sleepBetweenRetries > 0)
+			//{
+			//	Util.Sleep(policy.sleepBetweenRetries);
+			//}
 
 			// Retry command recursively.
 			ExecuteCommand();
@@ -171,7 +187,7 @@ namespace Aerospike.Client
 
 			if (args.SocketError != SocketError.Success)
 			{
-				command.RetryAfterInit(GetAerospikeException(args.SocketError));
+				command.RetryAfterInit(command.GetAerospikeException(args.SocketError));
 				return;
 			}
 
@@ -204,7 +220,7 @@ namespace Aerospike.Client
 			}
 			catch (SocketException se)
 			{
-				command.RetryAfterInit(GetAerospikeException(se.SocketErrorCode));
+				command.RetryAfterInit(command.GetAerospikeException(se.SocketErrorCode));
 			}
 			catch (Exception e)
 			{
@@ -217,7 +233,7 @@ namespace Aerospike.Client
 		{
 			if (complete != 0)
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(complete);
 				return;
 			}
 
@@ -228,10 +244,9 @@ namespace Aerospike.Client
 				dataOffset = 200;
 				SizeBuffer();
 
-				AdminCommand command = new AdminCommand(dataBuffer);
-				dataLength = command.SetAuthenticate(cluster.user, cluster.password);		 
-				dataOffset = 0;
-				eventArgs.SetBuffer(dataBuffer, dataOffset, dataLength);
+				AdminCommand command = new AdminCommand(dataBuffer, dataOffset);
+				dataLength = command.SetAuthenticate(cluster.user, cluster.password);
+				eventArgs.SetBuffer(dataBuffer, dataOffset, dataLength - dataOffset);
 				Send();
 				return;
 			}
@@ -242,42 +257,61 @@ namespace Aerospike.Client
 		{
 			if (complete != 0)
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(complete);
 				return;
 			}
 			WriteBuffer();
-			dataOffset = 0;
-			eventArgs.SetBuffer(dataBuffer, dataOffset, dataLength);
+			eventArgs.SetBuffer(dataBuffer, dataOffset, dataLength - dataOffset);
 			Send();
 		}
 
 		protected internal sealed override void SizeBuffer()
 		{
+			// dataOffset is currently the estimate, which may be greater than the actual size.
 			dataLength = dataOffset;
 
-			if (dataBuffer == null || dataLength > dataBuffer.Length)
+			if (dataLength > segment.size)
 			{
-				ResizeBuffer();
+				ResizeBuffer(dataLength);
 			}
+			dataBuffer = segment.buffer;
+			dataOffset = segment.offset;
 		}
 
-		private void ResizeBuffer()
+		private void ResizeBuffer(int size)
 		{
-			if (dataLength <= BufferPool.BUFFER_CUTOFF)
+			if (size <= BufferPool.BUFFER_CUTOFF)
 			{
 				// Checkout buffer from cache.
-				dataBuffer = cluster.GetNextBuffer(dataLength);
+				cluster.GetNextBuffer(size, segment);
 			}
 			else
 			{
 				// Large buffers should not be cached.
 				// Allocate, but do not put back into pool.
-				if (dataBuffer != null && dataBuffer.Length <= BufferPool.BUFFER_CUTOFF)
-				{
-					oldDataBuffer = dataBuffer;
-				}
-				dataBuffer = new byte[dataLength];
+				segment = new BufferSegment();
+				segment.buffer = new byte[size];
+				segment.offset = 0;
+				segment.size = size;
 			}
+		}
+
+		protected internal sealed override void End()
+		{
+			// Write total size of message.
+			int length = dataOffset - segment.offset;
+
+			if (length > dataLength)
+			{
+				throw new AerospikeException("Actual buffer length " + length + " is greater than estimated length " + dataLength);
+			}
+
+			// Switch dataLength from length to buffer end offset.
+			dataLength = dataOffset;
+			dataOffset = segment.offset;
+
+			ulong size = ((ulong)length - 8) | (CL_MSG_VERSION << 56) | (AS_MSG_TYPE << 48);
+			ByteUtil.LongToBytes(size, dataBuffer, segment.offset);
 		}
 
 		private void Send()
@@ -305,9 +339,9 @@ namespace Aerospike.Client
 
 		protected internal void ReceiveBegin()
 		{
-			dataOffset = 0;
-			dataLength = 8;
-			eventArgs.SetBuffer(dataOffset, dataLength);
+			dataOffset = segment.offset;
+			dataLength = dataOffset + 8;
+			eventArgs.SetBuffer(dataOffset, 8);
 			Receive();
 		}
 
@@ -337,25 +371,28 @@ namespace Aerospike.Client
 				Receive();
 				return;
 			}
-			dataOffset = 0;
+			dataOffset = segment.offset;
 
 			if (inHeader)
 			{
-				dataLength = (int)(ByteUtil.BytesToLong(dataBuffer, 0) & 0xFFFFFFFFFFFFL);
+				int length = (int)(ByteUtil.BytesToLong(dataBuffer, dataOffset) & 0xFFFFFFFFFFFFL);
 
-				if (dataLength <= 0)
+				if (length <= 0)
 				{
-					Finish();
+					ReceiveBegin();
 					return;
 				}
 
 				inHeader = false;
 
-				if (dataLength > dataBuffer.Length)
+				if (length > segment.size)
 				{
-					ResizeBuffer();
+					ResizeBuffer(length);
+					dataBuffer = segment.buffer;
+					dataOffset = segment.offset;
 				}
-				eventArgs.SetBuffer(dataBuffer, dataOffset, dataLength);
+				eventArgs.SetBuffer(dataBuffer, dataOffset, length);
+				dataLength = dataOffset + length;
 				Receive();
 			}
 			else
@@ -365,7 +402,7 @@ namespace Aerospike.Client
 					inAuthenticate = false;
 					inHeader = true;
 
-					int resultCode = dataBuffer[1];
+					int resultCode = dataBuffer[dataOffset + 1];
 
 					if (resultCode != 0)
 					{
@@ -382,7 +419,7 @@ namespace Aerospike.Client
 		{
 			if (complete != 0)
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(complete);
 				return;
 			}
 
@@ -394,7 +431,9 @@ namespace Aerospike.Client
 				return;
 			}
 
-			if (watch != null && (watch.ElapsedMilliseconds + policy.sleepBetweenRetries) > timeout)
+			// Disable sleep between retries.  Sleeping in asynchronous mode makes no sense.
+			//if (watch != null && (watch.ElapsedMilliseconds + policy.sleepBetweenRetries) > timeout)
+			if (watch != null && watch.ElapsedMilliseconds > timeout)
 			{
 				// Might as well stop here because the transaction will
 				// timeout after sleep completed.
@@ -405,10 +444,11 @@ namespace Aerospike.Client
 			// Prepare for retry.
 			ResetConnection();
 
-			if (policy.sleepBetweenRetries > 0)
-			{
-				Util.Sleep(policy.sleepBetweenRetries);
-			}
+			// Disable sleep between retries.  Sleeping in asynchronous mode makes no sense.
+			//if (policy.sleepBetweenRetries > 0)
+			//{
+			//	Util.Sleep(policy.sleepBetweenRetries);
+			//}
 
 			try
 			{
@@ -461,7 +501,7 @@ namespace Aerospike.Client
 			{
 				// Command has timed out in timeout queue thread.
 				// Ensure that command succeeds or fails, but not both.
-				if (Interlocked.Exchange(ref complete, 1) == 0)
+				if (Interlocked.CompareExchange(ref complete, FAIL_TIMEOUT, 0) == 0)
 				{
 					// Timeout thread may contend with retry thread.
 					// Lock before closing.
@@ -481,38 +521,61 @@ namespace Aerospike.Client
 		protected internal void Finish()
 		{
 			// Ensure that command succeeds or fails, but not both.
-			if (Interlocked.Exchange(ref complete, 1) == 0)
+			int status = Interlocked.CompareExchange(ref complete, SUCCESS, 0);
+
+			if (status == 0)
 			{
 				conn.UpdateLastUsed();
 				node.PutAsyncConnection(conn);
 
 				// Do not put large buffers back into pool.
-				if (dataBuffer.Length > BufferPool.BUFFER_CUTOFF)
+				if (segment.size > BufferPool.BUFFER_CUTOFF)
 				{
 					// Put back original buffer instead.
-					eventArgs.SetBuffer(oldDataBuffer, 0, 0);
+					segment = segmentOrig;
+					eventArgs.SetBuffer(segment.buffer, segment.offset, 0);
 				}
 
+				eventArgs.UserToken = segment;
 				cluster.PutEventArgs(eventArgs);
-				OnSuccess();
+
+				try
+				{
+					OnSuccess();
+				}
+				catch (AerospikeException ae)
+				{
+					// The user's OnSuccess() may have already been called which in turn generates this
+					// exception.  It's important to call OnFailure() anyhow because the user's code 
+					// may be waiting for completion notification which wasn't yet called in
+					// OnSuccess().  This is the only case where both OnSuccess() and OnFailure()
+					// gets called for the same command.
+					OnFailure(ae);
+				}
+				catch (Exception e)
+				{
+					OnFailure(new AerospikeException(e));
+				}
 			}
 			else
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(status);
 			}
 		}
 
 		private bool FailOnNetworkInit()
 		{
 			// Ensure that command succeeds or fails, but not both.
-			if (Interlocked.Exchange(ref complete, 1) == 0)
+			int status = Interlocked.CompareExchange(ref complete, FAIL_NETWORK_INIT, 0);
+
+			if (status == 0)
 			{
-				CloseOnNetworkError();
+				CloseOnError();
 				return false;
 			}
 			else
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(status);
 				return true;
 			}
 		}
@@ -520,14 +583,16 @@ namespace Aerospike.Client
 		private bool FailOnApplicationInit()
 		{
 			// Ensure that command succeeds or fails, but not both.
-			if (Interlocked.Exchange(ref complete, 1) == 0)
+			int status = Interlocked.CompareExchange(ref complete, FAIL_APPLICATION_INIT, 0);
+
+			if (status == 0)
 			{
-				Close();
+				CloseOnError();
 				return false;
 			}
 			else
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(status);
 				return true;
 			}
 		}
@@ -535,21 +600,25 @@ namespace Aerospike.Client
 		private void FailOnNetworkError(AerospikeException ae)
 		{
 			// Ensure that command succeeds or fails, but not both.
-			if (Interlocked.Exchange(ref complete, 1) == 0)
+			int status = Interlocked.CompareExchange(ref complete, FAIL_NETWORK_ERROR, 0);
+
+			if (status == 0)
 			{
-				CloseOnNetworkError();
+				CloseOnError();
 				OnFailure(ae);
 			}
 			else
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(status);
 			}
 		}
 
 		private void FailOnApplicationError(AerospikeException ae)
 		{
 			// Ensure that command succeeds or fails, but not both.
-			if (Interlocked.Exchange(ref complete, 1) == 0)
+			int status = Interlocked.CompareExchange(ref complete, FAIL_APPLICATION_ERROR, 0);
+
+			if (status == 0)
 			{
 				if (ae.KeepConnection())
 				{
@@ -561,63 +630,74 @@ namespace Aerospike.Client
 				else
 				{
 					// Close socket to flush out possible garbage.
-					Close();
+					CloseOnError();
 				}
 				OnFailure(ae);
 			}
 			else
 			{
-				FailOnClientTimeout();
+				AlreadyCompleted(status);
 			}
 		}
 
-		private void FailOnClientTimeout()
+		private void AlreadyCompleted(int status)
 		{
-			// Free up resources and notify.
-			CloseOnNetworkError();
-			OnFailure(new AerospikeException.Timeout());
+			// Only need to release resources from AsyncTimeoutQueue timeout.
+			// Otherwise, resources have already been released.
+			if (status == FAIL_TIMEOUT)
+			{
+				// Free up resources and notify user on timeout.
+				// Connection should have already been closed on AsyncTimeoutQueue timeout.
+				PutBackArgsOnError();
+				OnFailure(new AerospikeException.Timeout(node, timeout, iteration, failedNodes, failedConns));
+			}
+			else
+			{
+				if (Log.WarnEnabled())
+				{
+					Log.Warn("AsyncCommand unexpected return status: " + status);
+				}
+			}
 		}
 
-		private void CloseOnNetworkError()
+		private void CloseOnError()
 		{
-			Close();
-		}
-
-		private void Close()
-		{
-			// Connection was probably already closed by timeout thread.
-			// Check connected status before closing again.
-			if (conn != null && conn.IsConnected())
+			// Connection may be null because never obtained connection or connection
+			// was reset in preparation for retry.
+			if (conn != null)
 			{
 				conn.Close();
 			}
-
 			PutBackArgsOnError();
 		}
 
 		private void PutBackArgsOnError()
 		{
 			// Do not put large buffers back into pool.
-			if (dataBuffer != null && dataBuffer.Length > BufferPool.BUFFER_CUTOFF)
+			if (segment.size > BufferPool.BUFFER_CUTOFF)
 			{
 				// Put back original buffer instead.
-				eventArgs.SetBuffer(oldDataBuffer, 0, 0);
+				segment = segmentOrig;
+				eventArgs.SetBuffer(segment.buffer, segment.offset, 0);
 			}
 			else
 			{
 				// There may be rare error cases where dataBuffer and eventArgs.Buffer
 				// are different.  Make sure they are in sync.
-				eventArgs.SetBuffer(dataBuffer, 0, 0);
+				if (eventArgs.Buffer != segment.buffer)
+				{
+					eventArgs.SetBuffer(segment.buffer, segment.offset, 0);
+				}
 			}
-
+			eventArgs.UserToken = segment;
 			cluster.PutEventArgs(eventArgs);
 		}
 
-		private static AerospikeException GetAerospikeException(SocketError se)
+		private AerospikeException GetAerospikeException(SocketError se)
 		{
 			if (se == SocketError.TimedOut)
 			{
-				return new AerospikeException.Timeout();
+				return new AerospikeException.Timeout(node, timeout, iteration, failedNodes, failedConns);
 			}
 			return new AerospikeException.Connection("Socket error: " + se);
 		}

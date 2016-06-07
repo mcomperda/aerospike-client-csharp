@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -21,6 +21,11 @@ namespace Aerospike.Client
 	/// </summary>
 	public sealed class ResultCode
 	{
+		/// <summary>
+		/// Max connections would be exceeded.  There are no more available connections.
+		/// </summary>
+		public const int NO_MORE_CONNECTIONS = -7;
+
 		/// <summary>
 		/// Asynchronous max concurrent database commands have been exceeded and therefore rejected.
 		/// </summary>
@@ -145,7 +150,7 @@ namespace Aerospike.Client
 		public const int BIN_NOT_FOUND = 17;
 
 		/// <summary>
-		/// Specified bin name does not exist in record.
+		/// Device not keeping up with writes.
 		/// </summary>
 		public const int DEVICE_OVERLOAD = 18;
 
@@ -160,9 +165,14 @@ namespace Aerospike.Client
 		public const int INVALID_NAMESPACE = 20;
 
 		/// <summary>
-		/// Bin name length greater than 14 characters.
+		/// Bin name length greater than 14 characters or maximum bins exceeded.
 		/// </summary>
 		public const int BIN_NAME_TOO_LONG = 21;
+
+		/// <summary>
+		/// Operation not allowed at this time.
+		/// </summary>
+		public const int FAIL_FORBIDDEN = 22;
 	
 		/// <summary>
 		/// There are no more records left for query.
@@ -235,9 +245,14 @@ namespace Aerospike.Client
 		public const int INVALID_ROLE = 70;
 
 		/// <summary>
+		/// Role already exists.
+		/// </summary>
+		public const int ROLE_ALREADY_EXISTS = 71;
+	
+		/// <summary>
 		/// Specified Privilege is not valid.
 		/// </summary>
-		public const int INVALID_PRIVILEGE = 71;
+		public const int INVALID_PRIVILEGE = 72;
 		
 		/// <summary>
 		/// User must be authentication before performing database operations.
@@ -258,6 +273,21 @@ namespace Aerospike.Client
 		/// The requested item in a large collection was not found.
 		/// </summary>
 		public const int LARGE_ITEM_NOT_FOUND = 125;
+
+		/// <summary>
+		/// Batch functionality has been disabled.
+		/// </summary>
+		public const int BATCH_DISABLED = 150;
+
+		/// <summary>
+		/// Batch max requests have been exceeded.
+		/// </summary>
+		public const int BATCH_MAX_REQUESTS_EXCEEDED = 151;
+
+		/// <summary>
+		/// All batch queues are full.
+		/// </summary>
+		public const int BATCH_QUEUES_FULL = 152;
 	
 		/// <summary>
 		/// Secondary index already exists.
@@ -319,21 +349,18 @@ namespace Aerospike.Client
 		/// </summary>
 		public static bool KeepConnection(int resultCode)
 		{
+			// Keep connection on TIMEOUT because it can be server response which does not 
+			// close socket.  Also, client timeout code path does not call this method. 
 			switch (resultCode)
 			{
 				case 0: // Exception did not originate on server.
 				case QUERY_TERMINATED:
 				case SCAN_TERMINATED:
-				case INVALID_NODE_ERROR:
 				case PARSE_ERROR:
 				case SERIALIZE_ERROR:
-				case SERVER_MEM_ERROR:
-				case TIMEOUT:
 				case SERVER_NOT_AVAILABLE:
 				case SCAN_ABORT:
-				case INDEX_OOM:
 				case QUERY_ABORTED:
-				case QUERY_TIMEOUT:
 					return false;
 
 				default:
@@ -348,6 +375,9 @@ namespace Aerospike.Client
 		{
 			switch (resultCode)
 			{
+			case NO_MORE_CONNECTIONS:
+				return "No more available connections";
+
 			case COMMAND_REJECTED:
 				return "Command rejected";
 
@@ -430,7 +460,10 @@ namespace Aerospike.Client
 				return "Namespace not found";
 
 			case BIN_NAME_TOO_LONG:
-				return "Bin name length greater than 14 characters";
+				return "Bin name length greater than 14 characters or maximum bins exceeded";
+
+			case FAIL_FORBIDDEN:
+				return "Operation not allowed at this time";
 
 			case QUERY_END:
 				return "Query end";
@@ -474,6 +507,9 @@ namespace Aerospike.Client
 			case INVALID_ROLE:
 				return "Invalid role";
 
+			case ROLE_ALREADY_EXISTS:
+				return "Role already exists";
+
 			case INVALID_PRIVILEGE:
 				return "Invalid privilege";
 				
@@ -488,6 +524,15 @@ namespace Aerospike.Client
 
 			case LARGE_ITEM_NOT_FOUND:
 				return "Large collection item not found";
+
+			case BATCH_DISABLED:
+				return "Batch functionality has been disabled";
+
+			case BATCH_MAX_REQUESTS_EXCEEDED:
+				return "Batch max requests have been exceeded";
+
+			case BATCH_QUEUES_FULL:
+				return "All batch queues are full";
 
 			case INDEX_FOUND:
 				return "Index already exists";

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -130,20 +130,31 @@ namespace Aerospike.Demo
         protected bool GetIsStopWrites()
 		{
 			string filter = "namespace/" + args.ns;
-			string tokens;
+			string tokens = null;
 
-			try
+			Node[] nodes = client.Nodes;
+
+			foreach (Node node in nodes)
 			{
-                tokens = Info.Request(client.Nodes[0], filter);
-			}
-			catch (Exception)
-			{
-				return true;
+				try
+				{
+					tokens = Info.Request(node, filter);
+
+					if (tokens != null)
+					{
+						break;
+					}
+				}
+				catch (Exception)
+				{
+					// Try next node.
+				}
 			}
 
 			if (tokens == null)
 			{
-				return false;
+				// None of the nodes responded.  Shutdown.
+				return true;
 			}
 
 			string name = "stop-writes";

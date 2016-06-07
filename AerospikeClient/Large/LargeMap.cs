@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -65,7 +65,7 @@ namespace Aerospike.Client
 		/// <param name="map">map values to push</param>
 		public void Put(IDictionary map)
 		{
-			client.Execute(policy, key, PackageName, "put_all", binName, Value.GetAsMap(map), createModule);
+			client.Execute(policy, key, PackageName, "put_all", binName, Value.Get(map), createModule);
 		}
 
 		/// <summary>
@@ -84,7 +84,7 @@ namespace Aerospike.Client
 		public bool Exists(Value keyValue)
 		{
 			object result = client.Execute(policy, key, PackageName, "exists", binName, keyValue);
-			return (result != null) ? ((long)result != 0) : false;
+			return Util.ToBool(result);
 		}
 	
 		/// <summary>

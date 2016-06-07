@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -50,15 +50,18 @@ namespace Aerospike.Client
 			this.maxConcurrentNodes = (policy.maxConcurrentNodes == 0 || policy.maxConcurrentNodes >= threads.Length) ? threads.Length : policy.maxConcurrentNodes;
 		}
 
-		protected internal void StartThreads()
+		protected internal void InitializeThreads()
 		{
 			// Initialize threads.
 			for (int i = 0; i < nodes.Length; i++)
 			{
-				QueryCommand command = CreateCommand(nodes[i]);
+				MultiCommand command = CreateCommand(nodes[i]);
 				threads[i] = new QueryThread(this, command);
 			}
+		}
 
+		protected internal void StartThreads()
+		{
 			// Start threads.
 			for (int i = 0; i < maxConcurrentNodes; i++)
 			{
@@ -92,7 +95,7 @@ namespace Aerospike.Client
 			}
 		}
 
-		protected internal void StopThreads(Exception cause)
+		protected internal bool StopThreads(Exception cause)
 		{
 			// There is no need to stop threads if all threads have already completed.
 			if (Interlocked.Exchange(ref done, 1) == 0)
@@ -105,7 +108,9 @@ namespace Aerospike.Client
 				}
 				cancel.Cancel();
 				SendCancel();
+				return true;
 			}
+			return false;
 		}
 
 		protected internal void CheckForException()
@@ -122,9 +127,9 @@ namespace Aerospike.Client
 		private sealed class QueryThread
 		{
 			private readonly QueryExecutor parent;
-			private readonly QueryCommand command;
+			private readonly MultiCommand command;
 
-			public QueryThread(QueryExecutor parent, QueryCommand command)
+			public QueryThread(QueryExecutor parent, MultiCommand command)
 			{
 				this.parent = parent;
 				this.command = command;
@@ -153,7 +158,7 @@ namespace Aerospike.Client
 			}
 		}
 
-		protected internal abstract QueryCommand CreateCommand(Node node);
+		protected internal abstract MultiCommand CreateCommand(Node node);
 		protected internal abstract void SendCancel();
 		protected internal abstract void SendCompleted();
 	}

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -93,7 +93,7 @@ namespace Aerospike.Demo
 					{
 						if (valid)
 						{
-							console.Error("Server is currently in readonly mode. Shutting down...");
+							console.Error("Cluster is either in readonly mode or no nodes responded. Shutting down...");
                             valid = false;
 						}
 					}

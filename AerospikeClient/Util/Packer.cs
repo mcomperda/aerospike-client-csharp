@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -76,7 +76,7 @@ namespace Aerospike.Client
 			}
 		}
 
-		private void PackArrayBegin(int size)
+		public void PackArrayBegin(int size)
 		{
 			if (size < 16)
 			{
@@ -144,20 +144,51 @@ namespace Aerospike.Client
 			}
 		}
 
-		private void PackByteArrayBegin(int len)
+		public void PackGeoJSON(string val)
 		{
-			if (len < 32)
+			byte[] buffer = ByteUtil.StringToUtf8(val);
+			PackByteArrayBegin(buffer.Length + 1);
+			PackByte(ParticleType.GEOJSON);
+			PackByteArray(buffer, 0, buffer.Length);
+		}
+		
+		private void PackByteArrayBegin(int size)
+		{
+			// Continue to pack byte arrays as strings until all servers/clients
+			// have been upgraded to handle new message pack binary type.
+			if (size < 32)
 			{
-				PackByte((byte)(0xa0 | len));
+				PackByte((byte)(0xa0 | size));
 			}
-			else if (len < 65536)
+			else if (size < 65536)
 			{
-				PackShort(0xda, (ushort)len);
+				PackShort(0xda, (ushort)size);
 			}
 			else
 			{
-				PackInt(0xdb, (uint)len);
+				PackInt(0xdb, (uint)size);
 			}
+
+			// TODO: Replace with this code after all servers/clients
+			// have been upgraded to handle new message pack binary type.
+			/*
+			if (size < 32)
+			{
+				PackByte((byte)(0xa0 | size));
+			}
+			else if (size < 256)
+			{
+				PackByte(0xc4, (byte)size);
+			}
+			else if (size < 65536)
+			{
+				PackShort(0xc5, (ushort)size);
+			}
+			else
+			{
+				PackInt(0xc6, (uint)size);
+			}
+			*/
 		}
 
 		private void PackObject(object obj)
@@ -327,7 +358,27 @@ namespace Aerospike.Client
 		public void PackString(string val)
 		{
 			int size = ByteUtil.EstimateSizeUtf8(val) + 1;
-			PackByteArrayBegin(size);
+
+			if (size < 32)
+			{
+				PackByte((byte)(0xa0 | size));
+			}
+			// TODO: Enable this code after all servers/clients
+			// have been upgraded to handle 8 bit string length format.
+			/*
+			else if (size < 256)
+			{
+				PackByte(0xd9, (byte)size);
+			}
+			*/
+			else if (size < 65536)
+			{
+				PackShort(0xda, (ushort)size);
+			}
+			else
+			{
+				PackInt(0xdb, (uint)size);
+			} 
 
 			if (offset + size > buffer.Length)
 			{
@@ -378,7 +429,7 @@ namespace Aerospike.Client
 			offset += 8;
 		}
 
-		private void PackInt(int type, uint val)
+		public void PackInt(int type, uint val)
 		{
 			if (offset + 5 > buffer.Length)
 			{
@@ -397,6 +448,17 @@ namespace Aerospike.Client
 			}
 			buffer[offset++] = (byte)type;
 			ByteUtil.ShortToBytes(val, buffer, offset);
+			offset += 2;
+		}
+
+		public void PackRawShort(int val)
+		{
+			// WARNING. This method is not compatible with message pack standard.
+			if (offset + 2 > buffer.Length)
+			{
+				Resize(2);
+			}
+			ByteUtil.ShortToBytes((ushort)val, buffer, offset);
 			offset += 2;
 		}
 

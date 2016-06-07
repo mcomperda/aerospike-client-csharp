@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -130,6 +130,8 @@ namespace Aerospike.Client
 		/// </summary>
 		public sealed class Timeout : AerospikeException
 		{
+			public Node node;
+
 			/// <summary>
 			/// Specified timeout in milliseconds.
 			/// </summary>
@@ -162,9 +164,10 @@ namespace Aerospike.Client
 			/// <summary>
 			/// Create timeout exception with statistics.
 			/// </summary>
-			public Timeout(int timeout, int iterations, int failedNodes, int failedConns)
+			public Timeout(Node node, int timeout, int iterations, int failedNodes, int failedConns)
 				: base(ResultCode.TIMEOUT)
 			{
+				this.node = node;
 				this.timeout = timeout;
 				this.iterations = iterations;
 				this.failedNodes = failedNodes;
@@ -183,7 +186,8 @@ namespace Aerospike.Client
 						return base.Message;
 					}
 					return "Client timeout: timeout=" + timeout + " iterations=" + iterations + 
-						" failedNodes=" + failedNodes + " failedConns=" + failedConns;
+						" failedNodes=" + failedNodes + " failedConns=" + failedConns +
+						" lastNode=" + node;
 				}
 			}
 		}
@@ -240,6 +244,14 @@ namespace Aerospike.Client
 			/// </summary>
 			public Connection(Exception e)
 				: base(ResultCode.SERVER_NOT_AVAILABLE, e)
+			{
+			}
+
+			/// <summary>
+			/// Create connection exception with result code and message.
+			/// </summary>
+			public Connection(int resultCode, string message)
+				: base(resultCode, message)
 			{
 			}
 		}

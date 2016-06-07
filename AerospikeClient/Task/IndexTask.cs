@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -21,7 +21,7 @@ namespace Aerospike.Client
 	/// <summary>
 	/// Task used to poll for long running create index completion.
 	/// </summary>
-	public sealed class IndexTask : Task
+	public sealed class IndexTask : BaseTask
 	{
 		private readonly string ns;
 		private readonly string indexName;
@@ -29,19 +29,20 @@ namespace Aerospike.Client
 		/// <summary>
 		/// Initialize task with fields needed to query server nodes.
 		/// </summary>
-		public IndexTask(Cluster cluster, string ns, string indexName) 
-			: base(cluster, false)
+		public IndexTask(Cluster cluster, Policy policy, string ns, string indexName)
+			: base(cluster, policy)
 		{
 			this.ns = ns;
 			this.indexName = indexName;
 		}
 
 		/// <summary>
-		/// Initialize task with fields needed to query server nodes.
+		/// Initialize task that has already completed.
 		/// </summary>
 		public IndexTask() 
-			: base(null, true)
 		{
+			ns = null;
+			indexName = null;
 		}
 
 		/// <summary>
@@ -49,41 +50,48 @@ namespace Aerospike.Client
 		/// </summary>
 		public override bool QueryIfDone()
 		{
-			string command = "sindex/" + ns + '/' + indexName;
+			// All nodes must respond with complete to be considered done.
 			Node[] nodes = cluster.Nodes;
-			bool complete = false;
+
+			if (nodes.Length == 0)
+			{
+				return false;
+			}
+
+			string command = "sindex/" + ns + '/' + indexName;
     
 			foreach (Node node in nodes)
 			{
-				try
+				string response = Info.Request(policy, node, command);
+				string find = "load_pct=";
+				int index = response.IndexOf(find);
+    
+				if (index < 0)
 				{
-					string response = Info.Request(node, command);
-					string find = "load_pct=";
-					int index = response.IndexOf(find);
-    
-					if (index < 0)
+					if (response.IndexOf("FAIL:201") >= 0 || response.IndexOf("FAIL:203") >= 0)
 					{
-						complete = true;
-						continue;
+						// Index not found or not readable.  Keep waiting because create index may not
+						// have been started yet.
+						throw new AerospikeException(command + " failed: " + response);
 					}
-    
-					int begin = index + find.Length;
-					int end = response.IndexOf(';', begin);
-					string str = response.Substring(begin, end - begin);
-					int pct = Convert.ToInt32(str);
-    
-					if (pct >= 0 && pct < 100)
+					else
 					{
-						return false;
+						// Mark done and throw exception immediately.
+						throw new DoneException(command + " failed: " + response);
 					}
-					complete = true;
 				}
-				catch (Exception)
+    
+				int begin = index + find.Length;
+				int end = response.IndexOf(';', begin);
+				string str = response.Substring(begin, end - begin);
+				int pct = Convert.ToInt32(str);
+    
+				if (pct != 100)
 				{
-					complete = true;
+					return false;
 				}
 			}
-			return complete;
+			return true;
 		}
 	}
 }

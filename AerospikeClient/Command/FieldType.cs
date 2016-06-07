@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -30,10 +30,13 @@ namespace Aerospike.Client
 		public const int INDEX_FILTER = 23;
 		public const int INDEX_LIMIT = 24;
 		public const int INDEX_ORDER_BY = 25;
+		public const int INDEX_TYPE = 26;
 		public const int UDF_PACKAGE_NAME = 30;
 		public const int UDF_FUNCTION = 31;
 		public const int UDF_ARGLIST = 32;
 		public const int UDF_OP = 33;
 		public const int QUERY_BINLIST = 40;
+		public const int BATCH_INDEX = 41;
+		public const int BATCH_INDEX_WITH_SET = 42;
 	}
 }

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -86,7 +86,29 @@ namespace Aerospike.Client
 
 		/// <summary>
 		/// Constructor, specifying bin name and double value.
+		/// Aerospike server versions >= 3.6.0 natively support floating point values.  If your cluster
+		/// supports floating point values, then this is always the correct constructor for double.
+		/// Remember to also set <see cref="Aerospike.Client.Value.UseDoubleType"/> to true;
+		/// <para>
+		/// If your cluster does not support floating point, the value is converted to long bits.
+		/// On reads, it's important to call <see cref="Aerospike.Client.Record.GetDouble(string)"/>
+		/// to indicate that the long returned by the server should be converted back to a double.
+		/// If the same bin name holds different types for different records, then this constructor
+		/// should not be used because there is no way to know when reading if the long should be
+		/// converted to a double.  Instead, use <see cref="Aerospike.Client.Bin(string, object)"/> 
+		/// which converts the double to a C# serialized blob.
+		/// </para>
+		/// <code>
+		/// double value = 22.7;
+		/// Bin bin = new Bin("mybin", (Object) value);
+		/// </code>
+		/// <para>
+		/// This is slower and not portable to other languages, but the double type is preserved, so a
+		/// double will be returned without knowing if a conversion should be made.
+		/// </para>
+		/// <para>
 		/// For servers configured as "single-bin", enter a null or empty name.
+		/// </para>
 		/// </summary>
 		/// <param name="name">bin name, current limit is 14 characters</param>
 		/// <param name="value">bin value</param>
@@ -98,7 +120,29 @@ namespace Aerospike.Client
 
 		/// <summary>
 		/// Constructor, specifying bin name and float value.
+		/// Aerospike server versions >= 3.6.0 natively support floating point values.  If your cluster
+		/// supports floating point values, then this is always the correct constructor for float.
+		/// Remember to also set <see cref="Aerospike.Client.Value.UseDoubleType"/> to true;
+		/// <para>
+		/// If your cluster does not support floating point, the value is converted to long bits.
+		/// On reads, it's important to call <see cref="Aerospike.Client.Record.GetFloat(string)"/>
+		/// to indicate that the long returned by the server should be converted back to a float.
+		/// If the same bin name holds different types for different records, then this constructor
+		/// should not be used because there is no way to know when reading if the long should be
+		/// converted to a float.  Instead, use <see cref="Aerospike.Client.Bin(string, object)"/> 
+		/// which converts the float to a C# serialized blob.
+		/// </para>
+		/// <code>
+		/// float value = 22.7;
+		/// Bin bin = new Bin("mybin", (Object) value);
+		/// </code>
+		/// <para>
+		/// This is slower and not portable to other languages, but the float type is preserved, so a
+		/// float will be returned without knowing if a conversion should be made.
+		/// </para>
+		/// <para>
 		/// For servers configured as "single-bin", enter a null or empty name.
+		/// </para>
 		/// </summary>
 		/// <param name="name">bin name, current limit is 14 characters</param>
 		/// <param name="value">bin value</param>
@@ -224,6 +268,48 @@ namespace Aerospike.Client
 		}
 
 		/// <summary>
+		/// Create bin with a list value.  The list value will be serialized as a Aerospike 3 server list type.
+		/// Supported by Aerospike 3 servers only. 
+		/// <para>
+		/// If connecting to Aerospike 2 servers, use the following instead:
+		/// </para>
+		/// <code>
+		/// Bin bin = new Bin(name, (Object)list);
+		/// </code>
+		/// <para>
+		/// For servers configured as "single-bin", enter a null or empty name.
+		/// </para>
+		/// </summary>
+		/// <param name="name">bin name, current limit is 14 characters</param>
+		/// <param name="value">bin value</param>
+		public Bin(string name, IList value)
+		{
+			this.name = name;
+			this.value = Value.Get(value);
+		}
+
+		/// <summary>
+		/// Create bin with a map value.  The map value will be serialized as a Aerospike 3 server map type.
+		/// Supported by Aerospike 3 servers only. 
+		/// <para>
+		/// If connecting to Aerospike 2 servers, use the following instead:
+		/// </para>
+		/// <code>
+		/// Bin bin = new Bin(name, (Object)map);
+		/// </code>
+		/// <para>
+		/// For servers configured as "single-bin", enter a null or empty name.
+		/// </para>
+		/// </summary>
+		/// <param name="name">bin name, current limit is 14 characters</param>
+		/// <param name="value">bin value</param>
+		public Bin(string name, IDictionary value)
+		{
+			this.name = name;
+			this.value = Value.Get(value);
+		}
+
+		/// <summary>
 		/// Constructor, specifying bin name and object value.
 		/// This is the slowest of the Bin constructors because the type
 		/// must be determined using multiple "instanceof" checks.
@@ -237,30 +323,6 @@ namespace Aerospike.Client
 		{
 			this.name = name;
 			this.value = Value.Get(value);
-		}
-
-		/// <summary>
-		/// Create bin with a list value.  The list value will be serialized as a Aerospike 3 server list type.
-		/// Supported by Aerospike 3 servers only.
-		/// For servers configured as "single-bin", enter a null or empty name.
-		/// </summary>
-		/// <param name="name">bin name, current limit is 14 characters</param>
-		/// <param name="value">bin value</param>
-		public static Bin AsList(string name, IList value)
-		{
-			return new Bin(name, Value.GetAsList(value));
-		}
-
-		/// <summary>
-		/// Create bin with a map value.  The map value will be serialized as a Aerospike 3 server map type.
-		/// Supported by Aerospike 3 servers only.
-		/// For servers configured as "single-bin", enter a null or empty name.
-		/// </summary>
-		/// <param name="name">bin name, current limit is 14 characters</param>
-		/// <param name="value">bin value</param>
-		public static Bin AsMap(string name, IDictionary value)
-		{
-			return new Bin(name, Value.GetAsMap(value));
 		}
 
 		/// <summary>
@@ -288,6 +350,16 @@ namespace Aerospike.Client
 			return new Bin(name, Value.AsNull);
 		}
 
+		/// <summary>
+		/// Create bin with a GeoJSON value.
+		/// </summary>
+		/// <param name="name">bin name, current limit is 14 characters</param>
+		/// <param name="value">bin value</param>
+		public static Bin AsGeoJSON(string name, string value)
+		{
+			return new Bin(name, Value.GetAsGeoJSON(value));
+		}
+	
 		/// <summary>
 		/// Return string representation of bin.
 		/// </summary>

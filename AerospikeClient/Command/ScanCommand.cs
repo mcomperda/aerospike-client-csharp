@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -26,7 +26,7 @@ namespace Aerospike.Client
 		private readonly string setName;
 		private readonly ScanCallback callback;
 		private readonly string[] binNames;
-		private readonly long taskId;
+		private readonly ulong taskId;
 
 		public ScanCommand
 		(
@@ -36,8 +36,8 @@ namespace Aerospike.Client
 			string setName,
 			ScanCallback callback,
 			string[] binNames,
-			long taskId
-		) : base(node)
+			ulong taskId
+		) : base(node, true)
 		{
 			this.policy = policy;
 			this.ns = ns;
@@ -57,73 +57,16 @@ namespace Aerospike.Client
 			SetScan(policy, ns, setName, binNames, taskId);
 		}
 
-		protected internal override bool ParseRecordResults(int receiveSize)
+		protected internal override void ParseRow(Key key)
 		{
-			// Read/parse remaining message bytes one record at a time.
-			dataOffset = 0;
+			Record record = ParseRecord();
 
-			while (dataOffset < receiveSize)
+			if (!valid)
 			{
-				ReadBytes(MSG_REMAINING_HEADER_SIZE);
-				int resultCode = dataBuffer[5];
-
-				if (resultCode != 0)
-				{
-					if (resultCode == ResultCode.KEY_NOT_FOUND_ERROR)
-					{
-						return false;
-					}
-					throw new AerospikeException(resultCode);
-				}
-
-				byte info3 = dataBuffer[3];
-
-				// If this is the end marker of the response, do not proceed further
-				if ((info3 & Command.INFO3_LAST) == Command.INFO3_LAST)
-				{
-					return false;
-				}
-
-				int generation = ByteUtil.BytesToInt(dataBuffer, 6);
-				int expiration = ByteUtil.BytesToInt(dataBuffer, 10);
-				int fieldCount = ByteUtil.BytesToShort(dataBuffer, 18);
-				int opCount = ByteUtil.BytesToShort(dataBuffer, 20);
-
-				Key key = ParseKey(fieldCount);
-
-				// Parse bins.
-				Dictionary<string, object> bins = null;
-
-				for (int i = 0 ; i < opCount; i++)
-				{
-					ReadBytes(8);
-					int opSize = ByteUtil.BytesToInt(dataBuffer, 0);
-					byte particleType = dataBuffer[5];
-					byte nameSize = dataBuffer[7];
-
-					ReadBytes(nameSize);
-					string name = ByteUtil.Utf8ToString(dataBuffer, 0, nameSize);
-
-					int particleBytesSize = (int)(opSize - (4 + nameSize));
-					ReadBytes(particleBytesSize);
-					object value = ByteUtil.BytesToParticle(particleType, dataBuffer, 0, particleBytesSize);
-
-					if (bins == null)
-					{
-						bins = new Dictionary<string, object>();
-					}
-					bins[name] = value;
-				}
-
-				if (!valid)
-				{
-					throw new AerospikeException.ScanTerminated();
-				}
-
-				// Call the callback function.
-				callback(key, new Record(bins, generation, expiration));
+				throw new AerospikeException.ScanTerminated();
 			}
-			return true;
+
+			callback(key, record);
 		}
 	}
 }

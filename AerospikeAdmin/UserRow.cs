@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -16,38 +16,29 @@
  */
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.ComponentModel;
 using Aerospike.Client;
 
 namespace Aerospike.Admin
 {
 	public class UserRow
 	{
-		public string user;
+		public string name;
 		public List<string> roles;
-		public string rolesString;
+		public BindingList<RoleRow> roleRows;
 
-		public UserRow(UserRoles userRoles)
+		public UserRow(User user)
 		{
-			this.user = userRoles.user;
-			this.roles = userRoles.roles;
+			this.name = user.name;
+			this.roles = user.roles;
+			roleRows = new BindingList<RoleRow>();
 
-			StringBuilder sb = new StringBuilder(100);
-			List<string> roleList = userRoles.roles;
-
-			for (int i = 0; i < roleList.Count; i++)
+			foreach (string roleName in user.roles)
 			{
-				if (i > 0)
-				{
-					sb.Append(", ");
-				}
-				sb.Append(roleList[i]);
+				roleRows.Add(new RoleRow(roleName));
 			}
-			this.rolesString = sb.ToString(); 
 		}
 
-		public string User { get { return user; } }
-		public string Roles { get { return rolesString; } }
+		public string UserName { get { return name; } }
 	}
 }

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -33,7 +33,7 @@ namespace Aerospike.Demo
 		/// </summary>
 		public override void RunExample(AerospikeClient client, Arguments args)
 		{
-			if (!args.hasUdf)
+			if (!args.hasLargeDataTypes)
 			{
 				console.Info("Large list functions are not supported by the connected Aerospike server.");
 				return;
@@ -57,7 +57,7 @@ namespace Aerospike.Demo
 			client.Delete(args.writePolicy, key);
 
 			// Initialize large set operator.
-			Aerospike.Client.LargeList llist = client.GetLargeList(args.writePolicy, key, binName, null);
+			Aerospike.Client.LargeList llist = client.GetLargeList(args.writePolicy, key, binName);
 			string orig1 = "llistValue1";
 			string orig2 = "llistValue2";
 			string orig3 = "llistValue3";
@@ -141,7 +141,7 @@ namespace Aerospike.Demo
 			client.Delete(args.writePolicy, key);	
 
 			// Initialize large list operator.
-			Aerospike.Client.LargeList list = client.GetLargeList(args.writePolicy, key, "trades", null);
+			Aerospike.Client.LargeList list = client.GetLargeList(args.writePolicy, key, "trades");
 
 			// Write trades
 			Dictionary<string,Value> dict = new Dictionary<string,Value>();
@@ -151,21 +151,21 @@ namespace Aerospike.Demo
 			dict["ticker"] = Value.Get("IBM");
 			dict["qty"] = Value.Get(100);
 			dict["price"] = Value.Get(BitConverter.GetBytes(181.82));
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			DateTime timestamp2 = new DateTime(2014, 6, 26, 9, 33, 17);
 			dict["key"] = Value.Get(timestamp2.Ticks);
 			dict["ticker"] = Value.Get("GE");
 			dict["qty"] = Value.Get(500);
 			dict["price"] = Value.Get(BitConverter.GetBytes(26.36));
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			DateTime timestamp3 = new DateTime(2014, 6, 27, 14, 40, 19);
 			dict["key"] = Value.Get(timestamp3.Ticks);
 			dict["ticker"] = Value.Get("AAPL");
 			dict["qty"] = Value.Get(75);
 			dict["price"] = Value.Get(BitConverter.GetBytes(91.85));
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			// Verify list size
 			int size = list.Size();
@@ -247,7 +247,7 @@ namespace Aerospike.Demo
 			client.Delete(args.writePolicy, key);
 
 			// Initialize large list operator.
-			Aerospike.Client.LargeList list = client.GetLargeList(args.writePolicy, key, "trades", null);
+			Aerospike.Client.LargeList list = client.GetLargeList(args.writePolicy, key, "trades");
 
 			// Write trades
 			Dictionary<string, Value> dict = new Dictionary<string, Value>();
@@ -260,7 +260,7 @@ namespace Aerospike.Demo
 			writer.Write(100);    // qty
 			writer.Write(181.82); // price
 			dict["value"] = Value.Get(ms.ToArray());
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			DateTime timestamp2 = new DateTime(2014, 6, 26, 9, 33, 17);
 			dict["key"] = Value.Get(timestamp2.Ticks);
@@ -270,7 +270,7 @@ namespace Aerospike.Demo
 			writer.Write(500);   // qty
 			writer.Write(26.36); // price
 			dict["value"] = Value.Get(ms.ToArray());
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			DateTime timestamp3 = new DateTime(2014, 6, 27, 14, 40, 19);
 			dict["key"] = Value.Get(timestamp3.Ticks);
@@ -280,7 +280,7 @@ namespace Aerospike.Demo
 			writer.Write(75);      // qty
 			writer.Write(91.85);   // price
 			dict["value"] = Value.Get(ms.ToArray());
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			// Verify list size
 			int size = list.Size();
@@ -356,7 +356,7 @@ namespace Aerospike.Demo
 			client.Delete(args.writePolicy, key);
 
 			// Initialize large list operator.
-			Aerospike.Client.LargeList list = client.GetLargeList(args.writePolicy, key, "trades", null);
+			Aerospike.Client.LargeList list = client.GetLargeList(args.writePolicy, key, "trades");
 
 			// Write trades
 			Dictionary<string, Value> dict = new Dictionary<string, Value>();
@@ -364,17 +364,17 @@ namespace Aerospike.Demo
 			DateTime timestamp1 = new DateTime(2014, 6, 25, 12, 18, 43);
 			dict["key"] = Value.Get(timestamp1.Ticks);
 			dict["value"] = Value.Get(value1);
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			DateTime timestamp2 = new DateTime(2014, 6, 26, 9, 33, 17);
 			dict["key"] = Value.Get(timestamp2.Ticks);
 			dict["value"] = Value.Get(value2);
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			DateTime timestamp3 = new DateTime(2014, 6, 27, 14, 40, 19);
 			dict["key"] = Value.Get(timestamp3.Ticks);
 			dict["value"] = Value.Get(value3);
-			list.Add(Value.GetAsMap(dict));
+			list.Add(Value.Get(dict));
 
 			// Verify list size
 			int size = list.Size();

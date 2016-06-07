@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -19,16 +19,16 @@ namespace Aerospike.Client
 	/// <summary>
 	/// Task used to poll for long running execute job completion.
 	/// </summary>
-	public sealed class ExecuteTask : Task
+	public sealed class ExecuteTask : BaseTask
 	{
-		private readonly long taskId;
+		private readonly ulong taskId;
 		private readonly bool scan;
 
 		/// <summary>
 		/// Initialize task with fields needed to query server nodes.
 		/// </summary>
-		public ExecuteTask(Cluster cluster, Statement statement)
-			: base(cluster, false)
+		public ExecuteTask(Cluster cluster, Policy policy, Statement statement)
+			: base(cluster, policy)
 		{
 			this.taskId = statement.taskId;
 			this.scan = statement.filters == null;
@@ -39,49 +39,55 @@ namespace Aerospike.Client
 		/// </summary>
 		public override bool QueryIfDone()
 		{
-			string command = (scan) ? "scan-list" : "query-list";
+			// All nodes must respond with complete to be considered done.
 			Node[] nodes = cluster.Nodes;
-			bool done = false;
+
+			if (nodes.Length == 0)
+			{
+				return false;
+			}
+			
+			string module = (scan) ? "scan" : "query";
+			string command = "jobs:module=" + module + ";cmd=get-job;trid=" + taskId;
 
 			foreach (Node node in nodes)
 			{
-				string response = Info.Request(node, command);
-				string find = "job_id=" + taskId + ':';
+				string response = Info.Request(policy, node, command);
+
+				if (response.StartsWith("ERROR:2"))
+				{
+					// Task not found. This could mean task already completed or
+					// task not started yet.  We are going to have to assume that
+					// the task already completed...
+					continue;
+				}
+
+				if (response.StartsWith("ERROR:"))
+				{
+					// Mark done and quit immediately.
+					throw new DoneException(command + " failed: " + response);
+				}
+
+				string find = "status=";
 				int index = response.IndexOf(find);
 
 				if (index < 0)
 				{
-					done = true;
-					continue;
+					// Store exception and keep waiting.
+					throw new AerospikeException(command + " failed: " + response);
 				}
 
 				int begin = index + find.Length;
-				find = "job_status=";
-				index = response.IndexOf(find, begin);
-
-				if (index < 0)
-				{
-					continue;
-				}
-
-				begin = index + find.Length;
 				int end = response.IndexOf(':', begin);
 				string status = response.Substring(begin, end - begin);
-				
-				if (status.Equals("ABORTED"))
-				{
-					throw new AerospikeException.QueryTerminated();
-				}
-				else if (status.Equals("IN PROGRESS"))
+
+				// Newer servers use "done" while older servers use "DONE"
+				if (!status.StartsWith("done", System.StringComparison.OrdinalIgnoreCase))
 				{
 					return false;
 				}
-				else if (status.Equals("DONE"))
-				{
-					done = true;
-				}
 			}
-			return done;
+			return true;
 		}
 	}
 }

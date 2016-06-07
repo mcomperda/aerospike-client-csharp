@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -23,7 +23,7 @@ namespace Aerospike.Client
 		private readonly string ns;
 		private readonly string setName;
 		private readonly string[] binNamesScan;
-		private readonly long taskId;
+		private readonly ulong taskId;
 
 		public AsyncScan
 		(
@@ -35,7 +35,7 @@ namespace Aerospike.Client
 			string ns,
 			string setName,
 			string[] binNames,
-			long taskId
+			ulong taskId
 		) : base(parent, cluster, node, true)
 		{
 			this.policy = policy;

@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -27,6 +27,8 @@ namespace Aerospike.Client
 			Policy policy = GetPolicy();
 			int remainingMillis = policy.timeout;
 			DateTime limit = DateTime.UtcNow.AddMilliseconds(remainingMillis);
+			Node node = null;
+			Exception exception = null;
 			int failedNodes = 0;
 			int failedConns = 0;
 			int iterations = 0;
@@ -36,7 +38,6 @@ namespace Aerospike.Client
 			// Execute command until successful, timed out or maximum iterations have been reached.
 			while (true)
 			{
-				Node node = null;
 				try
 				{
 					node = GetNode();
@@ -76,41 +77,45 @@ namespace Aerospike.Client
 						else
 						{
 							// Close socket to flush out possible garbage.  Do not put back in pool.
-							conn.Close();
+							node.CloseConnection(conn);
 						}
-						throw ae;
+						throw;
 					}
 					catch (SocketException ioe)
 					{
-						// IO errors are considered temporary anomalies.  Retry.
-						// Close socket to flush out possible garbage.  Do not put back in pool.
-						conn.Close();
+						node.CloseConnection(conn);
 
-						if (Log.DebugEnabled())
+						if (ioe.ErrorCode == (int)SocketError.TimedOut)
 						{
-							Log.Debug("Node " + node + ": " + Util.GetErrorMessage(ioe));
+							// Full timeout has been reached.  Do not retry.
+							// Close socket to flush out possible garbage.  Do not put back in pool.
+							throw new AerospikeException.Timeout(node, policy.timeout, ++iterations, failedNodes, failedConns);
+						}
+						else
+						{
+							// IO errors are considered temporary anomalies.  Retry.
+							// Close socket to flush out possible garbage.  Do not put back in pool.
+							exception = ioe;
 						}
 					}
 					catch (Exception)
 					{
 						// All runtime exceptions are considered fatal.  Do not retry.
 						// Close socket to flush out possible garbage.  Do not put back in pool.
-						conn.Close();
+						node.CloseConnection(conn);
 						throw;
 					}
 				}
-				catch (AerospikeException.InvalidNode)
+				catch (AerospikeException.InvalidNode ine)
 				{
 					// Node is currently inactive.  Retry.
+					exception = ine;
 					failedNodes++;
 				}
 				catch (AerospikeException.Connection ce)
 				{
 					// Socket connection error has occurred. Retry.
-					if (Log.DebugEnabled())
-					{
-						Log.Debug("Node " + node + ": " + Util.GetErrorMessage(ce));
-					}
+					exception = ce;
 					failedConns++;
 				}
 
@@ -135,9 +140,13 @@ namespace Aerospike.Client
 					// Sleep before trying again.
 					Util.Sleep(policy.sleepBetweenRetries);
 				}
+
+				// Reset node reference and try again.
+				node = null;
 			}
 
-			throw new AerospikeException.Timeout(policy.timeout, iterations, failedNodes, failedConns);
+			// Retries have been exhausted.  Throw last exception.
+			throw exception;
 		}
 
 		protected internal sealed override void SizeBuffer()
@@ -146,6 +155,7 @@ namespace Aerospike.Client
 			{
 				dataBuffer = ThreadLocalData.ResizeBuffer(dataOffset);
 			}
+			dataOffset = 0;
 		}
 
 		protected internal void SizeBuffer(int size)
@@ -156,6 +166,29 @@ namespace Aerospike.Client
 			}
 		}
 
+		protected internal sealed override void End()
+		{
+			// Write total size of message.
+			ulong size = ((ulong)dataOffset - 8) | (CL_MSG_VERSION << 56) | (AS_MSG_TYPE << 48);
+			ByteUtil.LongToBytes(size, dataBuffer, 0);
+		}
+
+		protected internal void EmptySocket(Connection conn)
+		{
+			// There should not be any more bytes.
+			// Empty the socket to be safe.
+			long sz = ByteUtil.BytesToLong(dataBuffer, 0);
+			int headerLength = dataBuffer[8];
+			int receiveSize = ((int)(sz & 0xFFFFFFFFFFFFL)) - headerLength;
+
+			// Read remaining message bytes.
+			if (receiveSize > 0)
+			{
+				SizeBuffer(receiveSize);
+				conn.ReadFully(dataBuffer, receiveSize);
+			}
+		}
+	
 		protected internal abstract Node GetNode();
 		protected internal abstract void ParseResult(Connection conn);
 	}

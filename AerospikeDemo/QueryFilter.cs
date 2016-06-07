@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -95,9 +95,10 @@ namespace Aerospike.Demo
 			stmt.SetNamespace(args.ns);
 			stmt.SetSetName(args.set);
 			stmt.SetFilters(Filter.Equal(binName, nameFilter));
+			stmt.SetAggregateFunction("filter_example", "profile_filter", Value.Get(passFilter));
 
 			// passFilter will be applied in filter_example.lua.
-			ResultSet rs = client.QueryAggregate(null, stmt, "filter_example", "profile_filter", Value.Get(passFilter));
+			ResultSet rs = client.QueryAggregate(null, stmt);
 
 			try
 			{

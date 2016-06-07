@@ -1,5 +1,5 @@
 /* 
- * Copyright 2012-2014 Aerospike, Inc.
+ * Copyright 2012-2016 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -36,10 +36,26 @@ namespace Aerospike.Client
 		public ConsistencyLevel consistencyLevel = ConsistencyLevel.CONSISTENCY_ONE;
 
 		/// <summary>
-		/// Transaction timeout in milliseconds.
-		/// This timeout is used to set the socket timeout and is also sent to the 
-		/// server along with the transaction in the wire protocol.
+		/// Send read commands to the node containing the key's partition replica type.
+		/// Write commands are not affected by this setting, because all writes are directed 
+		/// to the node containing the key's master partition.
+		/// <para>
+		/// Default to sending read commands to the node containing the key's master partition.
+		/// </para>
+		/// </summary>
+		public Replica replica = Replica.MASTER;
+
+		/// <summary>
+		/// Total transaction timeout in milliseconds for both client and server.
+		/// The timeout is tracked on the client and also sent to the server along 
+		/// with the transaction in the wire protocol.  The client will most likely
+		/// timeout first, but the server has the capability to timeout the transaction
+		/// as well.
+		/// <para>
+		/// The timeout is also used as a socket timeout.  Retries will not occur
+		/// if the timeout limit has been reached.
 		/// Default to no timeout (0).
+		/// </para>
 		/// </summary>
 		public int timeout;
 
@@ -58,16 +74,10 @@ namespace Aerospike.Client
 		public int sleepBetweenRetries = 500;
 
 		/// <summary>
-		/// Allow read operations to use replicated data partitions instead of master
-		/// partition. By default, both read and write operations are directed to the
-		/// master partition.
-		/// <para>
-		/// This variable is currently only used in batch read/exists operations. For 
-		/// batch, this variable should only be set to true when the replication factor
-		/// is greater than or equal to the number of nodes in the cluster.
-		/// </para>
+		/// Send user defined key in addition to hash digest on both reads and writes.
+		/// The default is to not send the user defined key.
 		/// </summary>
-		public bool allowProleReads;
+		public bool sendKey;
 
 		/// <summary>
 		/// Copy constructor.
@@ -76,10 +86,11 @@ namespace Aerospike.Client
 		{
 			this.priority = other.priority;
 			this.consistencyLevel = other.consistencyLevel;
+			this.replica = other.replica;
 			this.timeout = other.timeout;
 			this.maxRetries = other.maxRetries;
 			this.sleepBetweenRetries = other.sleepBetweenRetries;
-			this.allowProleReads = other.allowProleReads;
+			this.sendKey = other.sendKey;
 		}
 
 		/// <summary>
